@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Outreach — Control</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f4f0eb;--surface:#faf7f4;--border:#e6ddd4;--text:#1c1917;--muted:#78716c;--hint:#a8a29e;--green:#15803d;--green-bg:#f0fdf4;--green-br:#bbf7d0;--amber:#92400e;--amber-bg:#fffbeb;--amber-br:#fde68a;--red:#b91c1c;--red-bg:#fef2f2;--red-br:#fecaca;--blue:#1d4ed8;--blue-bg:#eff6ff;--blue-br:#bfdbfe;--slate:#475569;--slate-bg:#f8fafc;--slate-br:#e2e8f0}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:"Inter",-apple-system,sans-serif;font-size:14px;min-height:100vh}
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 28px;height:52px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:20}
+.logo{width:26px;height:26px;background:#c96442;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.logo svg{width:14px;height:14px}
+.topbar-name{font-size:14px;font-weight:500}
+.topbar-dot{color:var(--border)}
+.topbar-sub{font-size:13px;color:var(--muted)}
+.topbar-time{margin-left:auto;font-size:12px;color:var(--hint);font-variant-numeric:tabular-nums}
+.btn-launch{margin-left:16px;padding:6px 14px;border-radius:7px;border:none;font-size:13px;font-weight:500;cursor:pointer}
+.btn-launch.idle{background:#15803d;color:#fff}
+.btn-launch.running{background:#b91c1c;color:#fff}
+.btn-launch:disabled{opacity:.45;cursor:not-allowed}
+.btn-stop-all{margin-left:6px;padding:6px 14px;border-radius:7px;border:none;font-size:13px;font-weight:500;cursor:pointer;background:#7f1d1d;color:#fff}
+.main{max-width:960px;margin:0 auto;padding:24px 28px 60px;display:flex;flex-direction:column;gap:20px}
+
+.section{display:flex;flex-direction:column;gap:6px}
+.section-header{display:flex;align-items:center;gap:10px;padding:0 2px;margin-bottom:2px}
+.section-label{font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.09em;color:var(--hint);white-space:nowrap}
+.section-line{flex:1;height:1px;background:var(--border)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 20px;display:grid;grid-template-columns:1fr auto;align-items:start;gap:20px;position:relative}
+.card::before{content:"";position:absolute;left:0;top:12px;bottom:12px;width:3px;border-radius:0 3px 3px 0}
+.s-running::before{background:var(--green)}.s-paused::before{background:#d97706}.s-error::before{background:var(--red)}.s-done::before{background:#c96442}.s-idle::before,.s-plan::before,.s-stopped::before{background:var(--border)}
+.card-acct{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:var(--text);margin-bottom:8px;flex-wrap:wrap}
+.acct-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.ad-green{background:var(--green)}.ad-orange{background:#c96442}.ad-gray{background:var(--hint)}
+.card-meta{margin-bottom:10px}
+.card-meta-line{font-size:12px;color:var(--muted);margin-bottom:3px}
+.card-meta-line span{color:var(--text)}
+.card-meta-indent{font-size:12px;color:var(--text);margin-bottom:3px;padding-left:8px}
+.card-tags{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px}
+.tag{font-size:11px;padding:3px 9px;border-radius:20px;border:.5px solid var(--border);color:var(--muted);background:var(--surface);white-space:nowrap;display:inline-flex;align-items:center;gap:4px}
+.tag-running{background:var(--green-bg);color:var(--green);border-color:var(--green-br)}
+.tag-paused{background:var(--amber-bg);color:var(--amber);border-color:var(--amber-br)}
+.tag-error{background:var(--red-bg);color:var(--red);border-color:var(--red-br)}
+.tag-done{background:#fff8f5;color:#c96442;border-color:#f5cfc2}
+.tag-idle,.tag-plan,.tag-stopped{background:var(--slate-bg);color:var(--slate);border-color:var(--slate-br)}
+.tag-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}.pulse{animation:pulse 1.5s infinite}
+.tag-popup{cursor:pointer;font-size:11px;padding:3px 9px;border-radius:20px;border:.5px solid;white-space:nowrap;background:none;transition:opacity .15s;font-family:inherit}
+.tag-popup:hover{opacity:.7}
+.tp-blue{background:var(--blue-bg);color:var(--blue);border-color:var(--blue-br)}
+.tp-green{background:var(--green-bg);color:var(--green);border-color:var(--green-br)}
+.tp-amber{background:var(--amber-bg);color:var(--amber);border-color:var(--amber-br)}
+.tp-gray{background:var(--slate-bg);color:var(--slate);border-color:var(--slate-br)}
+.tp-red{background:var(--red-bg);color:var(--red);border-color:var(--red-br)}
+.card-activity{font-size:11px;color:var(--hint);margin-top:4px}
+.card-error{font-size:11px;color:var(--red);background:var(--red-bg);border:1px solid var(--red-br);border-radius:6px;padding:4px 8px;margin-top:6px}
+.credits-badge{font-size:10px;padding:1px 6px;border-radius:10px;margin-left:4px}
+.cr-ok{background:var(--green-bg);color:var(--green)}.cr-low{background:var(--red-bg);color:var(--red)}
+.card-right{display:flex;flex-direction:column;align-items:center;gap:8px;min-width:100px}
+button{font-size:12px;padding:7px 14px;border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--muted);cursor:pointer;transition:all .12s;font-family:inherit}
+button:hover{background:var(--bg);border-color:#c8b8a8;color:var(--text)}
+.btn-stop{color:var(--red);background:var(--red-bg);border-color:var(--red-br);width:100%}
+.btn-run{color:var(--green);background:var(--green-bg);border-color:var(--green-br);width:100%}
+.btn-cfg{color:var(--blue);background:var(--blue-bg);border-color:var(--blue-br);width:100%}
+.btn-note{font-size:10px;color:var(--hint);text-align:center}
+.card-stats{display:flex;gap:10px;margin-top:4px}
+.stat{text-align:center;min-width:30px}
+.stat-n{font-size:19px;font-weight:500;line-height:1}
+.sn-g{color:var(--green)}.sn-m{color:var(--hint)}.sn-b{color:var(--blue)}
+.stat-l{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--hint);margin-top:3px}
+.pop-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:200;align-items:center;justify-content:center}
+.pop-overlay.open{display:flex}
+.pop-box{background:var(--surface);border-radius:14px;border:.5px solid var(--border);padding:20px 22px;max-width:480px;width:92%;max-height:78vh;overflow-y:auto;position:relative}
+.pop-title{font-size:13px;font-weight:500;color:var(--text);margin-bottom:14px;padding-bottom:10px;border-bottom:.5px solid var(--border)}
+.pop-close{position:absolute;top:14px;right:16px;font-size:20px;color:var(--hint);cursor:pointer;background:none;border:none;line-height:1;padding:0}
+.pop-close:hover{color:var(--text)}
+.pop-profile{padding:9px 0;border-bottom:.5px solid var(--border);display:grid;grid-template-columns:1fr auto;gap:8px;align-items:start}
+.pop-profile:last-child{border-bottom:none}
+.pop-pname{font-size:13px;font-weight:500;color:var(--text);margin-bottom:2px}
+.pop-preason{font-size:11px;color:var(--muted)}
+.pop-plink{font-size:11px;color:var(--blue);text-decoration:none;padding:3px 8px;border-radius:5px;border:.5px solid var(--blue-br);white-space:nowrap}
+.pop-plink:hover{opacity:.7}
+.pop-msg-block{margin-bottom:14px}
+.pop-msg-label-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.pop-msg-label{font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.07em;color:var(--hint)}
+.pop-msg-body{font-size:12px;color:var(--muted);line-height:1.65;white-space:pre-wrap;background:var(--bg);border-radius:8px;padding:10px 12px}
+.pop-kw-sec{margin-bottom:12px}
+.pop-kw-label{font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px}
+.pop-kw-label.inc{color:var(--green)}.pop-kw-label.exc{color:var(--red)}
+.pop-kw-list{display:flex;flex-wrap:wrap;gap:5px}
+.kp{font-size:11px;padding:2px 8px;border-radius:20px}
+.kp.inc{background:var(--green-bg);color:var(--green);border:.5px solid var(--green-br)}
+.kp.exc{background:var(--red-bg);color:var(--red);border:.5px solid var(--red-br)}
+.pop-empty{font-size:13px;color:var(--muted);padding:8px 0}
+.pactions{display:flex;gap:5px;align-items:center;flex-shrink:0}
+.act-btn{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:.5px solid var(--border);background:var(--surface);cursor:pointer;color:var(--muted);transition:all .15s;text-decoration:none}
+.act-btn:hover{background:var(--bg);color:var(--text)}
+.act-btn.ok{background:var(--green-bg) !important;border-color:var(--green-br);color:var(--green)}
+.card-regions{font-size:11px;color:var(--hint);margin-bottom:10px}
+.hist-icon-btn{cursor:pointer;display:inline-flex;align-items:center;padding:3px 5px;border-radius:5px;border:.5px solid var(--border);background:none;color:var(--hint);margin-left:2px}
+.hist-icon-btn:hover{background:var(--bg)}
+.hist-icon-btn svg{width:12px;height:12px}
+.stats-row{display:flex;gap:0}
+.stat-btn{flex:1;text-align:center;padding:4px 2px;cursor:pointer;border-radius:6px;border:none;background:none;font-family:inherit}
+.stat-btn:hover{background:var(--surface)}
+.stat-btn+.stat-btn{border-left:.5px solid var(--border)}
+.stat-div{flex:1;text-align:center;padding:4px 2px}
+.stat-n{font-size:17px;font-weight:500;line-height:1}
+.stat-l{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--hint);margin-top:3px}
+.pop-title{font-size:13px;font-weight:500;color:var(--text);margin-bottom:14px;padding-bottom:10px;border-bottom:.5px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.stats-table{width:100%;border-collapse:collapse;table-layout:fixed}
+.stats-table th{font-size:9px;font-weight:500;text-transform:uppercase;letter-spacing:.07em;color:var(--hint);padding:5px 2px;text-align:center;border-bottom:.5px solid var(--border)}
+.stats-table td{text-align:center;padding:6px 2px;vertical-align:middle}
+.stats-table .row-label{font-size:9px;font-weight:500;text-transform:uppercase;letter-spacing:.06em;color:var(--hint);padding:4px;width:34px}
+.stats-table .bl{border-left:.5px solid var(--border)}
+.stats-table .bl-dark{border-left:1px solid rgba(28,25,23,.2)}
+.stats-table .bg-cred{background:var(--surface)}
+.stats-box{background:var(--bg);border-radius:8px;border:.5px solid var(--border);overflow:hidden}
+.sn-r{color:var(--red)}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="logo"><svg viewBox="0 0 16 16" fill="none"><path d="M8 1.5L1.5 5V11L8 14.5L14.5 11V5L8 1.5Z" stroke="white" stroke-width="1.3"/><path d="M8 1.5V14.5M1.5 5L14.5 11M14.5 5L1.5 11" stroke="white" stroke-width="0.9" opacity=".5"/></svg></div>
+  <span class="topbar-name">Outreach</span>
+  <span class="topbar-dot">·</span>
+  <span class="topbar-sub">panel de control</span>
+  <button class="btn-launch idle" id="btn-launch" onclick="launchAgent()">▶ Iniciar agente</button>
+  <button class="btn-stop-all" onclick="stopAll()">■ Detener todo</button>
+</div>
+<div class="main">
+
+  <div id="sections"></div>
+  <div id="popups"></div>
+</div>
+
+<script>
+const OUTREACH_META = {
+  "inversores-es": {
+    regions: "MX · US",
+    perfiles: "Inversores",
+    industrias: "Venture Capital · Angel Investor · Seed · Family Office · PE",
+    msgs: [
+      { lang: "Español (default)", body: "¡Hola! ¿Cómo estás?\n\nEstuve viendo tu perfil y quedé genuinamente impresionado con tu trayectoria profesional. La manera en que has construido tu carrera en la industria es realmente admirable.\n\nEstamos lanzando un producto de Inteligencia Artificial orientado a directivos y gerentes de la industria. Antes del lanzamiento, estamos conversando con profesionales con experiencia real en gestión para conocer sus impresiones y recibir comentarios.\n\nPensé que tu feedback podría ser muy valioso. ¿Podríamos conversar 15 o 20 minutos?" },
+      { lang: "English — USA · UK · CA", body: "Hi! How are you?\n\nI came across your profile and was genuinely impressed by your professional background.\n\nWe are launching an AI product aimed at industry executives and managers. Before the launch, we are speaking with professionals with real management experience to receive feedback.\n\nI thought your perspective could be very valuable. Could we talk for 15 or 20 minutes?" }
+    ],
+    kwInc: ["angel investor","venture capital","family office","seed investor","private equity","fund manager","managing partner","general partner","investment director","portfolio manager","sfo","mfo","inversionista","investidor anjo","capital de risco"],
+    kwExc: ["recruiter","talent acquisition","hr","human resources","vendedor","sdr","bdr","account executive","student","intern","trainee"]
+  },
+  "brasil-pt-1": {
+    regions: "SP",
+    perfiles: "Gerentes · Diretores · Consultores",
+    industrias: "Manufatura · Agronegócio · Mineração · Petróleo & Gas · Energia · Logística",
+    msgs: [
+      { lang: "Português", body: "Olá! Como você está?\n\nEstive olhando seu perfil e fiquei genuinamente impressionado com a sua trajetória profissional. A forma como você construiu sua carreira na indústria é realmente admirável.\n\nEstamos lançando um produto de Inteligência Artificial voltado para diretores e gerentes da indústria, com análises estratégicas e recomendações práticas para apoiar a tomada de decisão no dia a dia.\n\nPensei que seu feedback poderia ser muito valioso. Se fizer sentido, poderíamos conversar por 15 ou 20 minutos?" }
+    ],
+    kwInc: ["gerente","diretor","diretora","gerente de operações","gerente industrial","plant manager","operations manager","manufacturing manager","supply chain manager","consultor industrial","consultor de operacoes","consultor de manufatura","operations consultant","manufacturing consultant","industrial consultant","agronegócio","mineração","manufatura","oil & gas"],
+    kwExc: ["gerente de TI","head de TI","recursos humanos","gestão de pessoas","recrutador","talent acquisition","people & culture","developer","desenvolvedor","consultor SAP","consultor ERP","digital transformation","vendedor","estagiário","student"]
+  },
+  "brasil-pt-2": {
+    regions: "MG · RJ · ES · BA",
+    perfiles: "Gerentes · Diretores · Consultores",
+    industrias: "Manufatura · Agronegócio · Mineração · Petróleo & Gas · Energia · Logística",
+    msgs: [
+      { lang: "Português", body: "Olá! Como você está?\n\nEstive olhando seu perfil e fiquei genuinamente impressionado com a sua trajetória profissional. A forma como você construiu sua carreira na indústria é realmente admirável.\n\nEstamos lançando um produto de Inteligência Artificial voltado para diretores e gerentes da indústria, com análises estratégicas e recomendações práticas para apoiar a tomada de decisão no dia a dia.\n\nPensei que seu feedback poderia ser muito valioso. Se fizer sentido, poderíamos conversar por 15 ou 20 minutos?" }
+    ],
+    kwInc: ["gerente","diretor","diretora","gerente de operações","gerente industrial","plant manager","operations manager","supply chain manager","consultor industrial","consultor de operacoes","consultor de manufatura","operations consultant","manufacturing consultant","industrial consultant","agronegócio","mineração","manufatura","oil & gas"],
+    kwExc: ["gerente de TI","recursos humanos","gestão de pessoas","recrutador","developer","desenvolvedor","consultor SAP","digital transformation","vendedor","estagiário","student"]
+  }
+};
+
+const GROUP_LABELS  = { outreach:"Cancelación de invitaciones + Mensaje de contacto", seguimiento:"Seguimiento", email:"Email", crm:"Calendario · CRM · Inteligencia" };
+const PLATFORM_ICON = { linkedin:"🔗", email:"✉", calendar:"📅", crm:"🗂", news:"📰" };
+
+const STATE_LABELS = { idle:"En espera", running:"Activo", paused:"Pausado", stopped:"Detenido", error:"Error", done:"Completado", plan:"Planificado" };
+const STATE_COLORS = { running:"tag-running", paused:"tag-paused", error:"tag-error", idle:"tag-idle", plan:"tag-plan", done:"tag-done", stopped:"tag-stopped" };
+
+// ── Clock ──────────────────────────────────────────────────────
+// ── Popup helpers ──────────────────────────────────────────────
+var _lastPopOpenedAt = 0;
+function openPop(id) {
+  _lastPopOpenedAt = Date.now();
+  var el = document.getElementById("pop-" + id);
+  if (el) el.classList.add("open");
+}
+function closePop(id) {
+  var el = document.getElementById("pop-" + id);
+  if (el) el.classList.remove("open");
+}
+function esc(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+// ── Helpers ────────────────────────────────────────────────────
+function convRate(s) {
+  var t = (s.sent || 0) + (s.skipped || 0);
+  if (!t) return null;
+  return Math.round((s.sent / t) * 100) + "%";
+}
+
+function stateTag(state) {
+  var pulse = state === "running" ? " pulse" : "";
+  var cls   = STATE_COLORS[state] || "tag-idle";
+  var label = STATE_LABELS[state] || state;
+  return '<span class="tag ' + cls + '"><span class="tag-dot' + pulse + '"></span>' + label + '</span>';
+}
+
+// ── Card ───────────────────────────────────────────────────────
+function buildCard(auto, s) {
+  var state    = s.state || (auto.group === "outreach" ? "idle" : "plan");
+  var errors   = s.errors || [];
+  var lastErr  = errors[errors.length - 1];
+  var conv     = convRate(s);
+  var isActive = state === "running" || state === "paused";
+  var isIdle   = state === "idle"    || state === "stopped";
+  var isPlan   = state === "plan";
+  var isDone   = state === "done";
+  var meta     = OUTREACH_META[auto.id];
+  var dotCls   = isActive ? "ad-green" : isDone ? "ad-orange" : "ad-gray";
+  var sent      = s.sent    || 0;
+  var skipped   = s.skipped || 0;
+  var totalSent = (s.sentLog  || []).length;
+  var totalSkip = (s.skipLog  || []).length;
+  var totalSess = (s.sessions || []).length;
+  var convSes   = convRate(s);
+  var convTot   = (function() {
+    var tSent = totalSent, tSkip = totalSkip, t = tSent + tSkip;
+    return t ? Math.round((tSent / t) * 100) + "%" : null;
+  })();
+  var credVal   = s.credits != null ? s.credits : null;
+  var credCls   = credVal !== null && credVal < 20 ? "sn-r" : "sn-g";
+
+  var credBadge = ""; // créditos ahora en tabla de stats
+
+  // Hist icon
+  var histIcon = '<button class="hist-icon-btn" data-pop="hist-' + auto.id + '" title="Historial">' +
+    '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 1.5"/></svg>' +
+    '</button>';
+
+  var h = '<div class="card s-' + state + '">';
+  h += '<div>';
+
+  // Row 1: dot + account + credits + hist
+  h += '<div class="card-acct">';
+  h += '<span class="acct-dot ' + dotCls + '"></span>';
+  h += 'LinkedIn: ' + esc(auto.account);
+  h += credBadge;
+  h += histIcon;
+  h += '</div>';
+
+  if (meta) {
+    h += '<div class="card-meta"><div class="card-meta-line">Perfiles: <span>' + esc(meta.perfiles) + '</span></div>';
+    h += '<div class="card-meta-line">Industrias: <span>' + esc(meta.industrias) + '</span></div></div>';
+    if (meta.regions) h += '<div class="card-regions">Regiones: ' + esc(meta.regions) + '</div>';
+
+    var msgLang = meta.msgs.length > 1 ? "ES/EN" : meta.msgs[0].lang.split("—")[0].trim();
+    h += '<div class="card-tags">' + stateTag(state);
+    if (errors.length) h += '<button class="tag-popup tp-red" data-pop="err-' + auto.id + '">⚠ Error ↗</button>';
+    h += '<button class="tag-popup tp-blue" data-pop="msg-' + auto.id + '">Mensaje: ' + esc(msgLang) + ' ↗</button>';
+    h += '<button class="tag-popup tp-gray" data-pop="kw-' + auto.id + '">Keywords ↗</button>';
+    h += '</div>';
+  } else {
+    h += '<div class="card-tags">' + stateTag(state);
+    if (auto.lang) h += '<span class="tag">' + esc(auto.lang) + '</span>';
+    h += '</div>';
+    if (auto.desc) h += '<div class="card-activity">' + esc(auto.desc) + '</div>';
+  }
+
+  if (lastErr) h += '<div class="card-error">⚠ ' + esc(lastErr) + '</div>';
+
+  // Stats table — columna izquierda, debajo de los tags
+  if (meta) {
+    h += '<div class="stats-box" style="margin-top:10px">';
+    h += '<table class="stats-table">';
+    h += '<thead><tr>';
+    h += '<th style="width:34px"></th>';
+    h += '<th class="bl">Enviados</th>';
+    h += '<th class="bl">Saltados</th>';
+    h += '<th class="bl">Conv.</th>';
+    h += '<th class="bl bl-dark bg-cred">Créditos</th>';
+    h += '</tr></thead>';
+    h += '<tbody>';
+    h += '<tr style="border-bottom:.5px solid var(--border)">';
+    h += '<td class="row-label">Ses.</td>';
+    h += '<td class="bl" style="cursor:pointer" data-pop="sent-' + auto.id + '"><div class="stat-n sn-g">' + (sent || "—") + '</div></td>';
+    h += '<td class="bl" style="cursor:pointer" data-pop="skip-' + auto.id + '"><div class="stat-n sn-m">' + (skipped || "—") + '</div></td>';
+    h += '<td class="bl"><div class="stat-n sn-b">' + (convSes || "—") + '</div></td>';
+    h += '<td class="bl bl-dark bg-cred" rowspan="2" style="vertical-align:middle">';
+    if (credVal !== null) {
+      h += '<div class="stat-n ' + credCls + '" style="font-size:18px">' + credVal + '</div>';
+      h += '<div class="stat-l" style="margin-top:2px">disponibles</div>';
+    } else {
+      h += '<div class="stat-n sn-m">—</div>';
+    }
+    h += '</td></tr>';
+    h += '<tr>';
+    h += '<td class="row-label">Tot.</td>';
+    h += '<td class="bl" style="cursor:pointer" data-pop="sent-' + auto.id + '"><div class="stat-n sn-g">' + (totalSent || "—") + '</div></td>';
+    h += '<td class="bl" style="cursor:pointer" data-pop="skip-' + auto.id + '"><div class="stat-n sn-m">' + (totalSkip || "—") + '</div></td>';
+    h += '<td class="bl"><div class="stat-n sn-b">' + (convTot || "—") + '</div></td>';
+    h += '</tr>';
+    h += '</tbody></table></div>';
+  }
+  h += '</div>'; // end left
+
+  // Right column — solo botón
+  h += '<div class="card-right" style="min-width:90px">';
+  if (isActive) h += '<button class="btn-stop"  data-action="stop"   data-id="' + auto.id + '">Detener</button>';
+  if (isIdle)   h += '<button class="btn-run"   data-action="launch"  data-id="' + auto.id + '">Iniciar</button>';
+  if (isPlan)   h += '<button class="btn-cfg"   data-action="cfg"     data-id="' + auto.id + '">Configurar</button>';
+  if (isDone)   h += '<button class="btn-run"   data-action="launch"  data-id="' + auto.id + '">Reiniciar</button>';
+  h += '</div>'; // end right
+
+  h += '</div>'; // end card
+  return h;
+}
+
+// ── Popups ─────────────────────────────────────────────────────
+function buildPopups(auto, s) {
+  var meta = OUTREACH_META[auto.id];
+  if (!meta) return "";
+  var sentLog  = s.sentLog  || [];
+  var skipLog  = s.skipLog  || [];
+  var sessions = s.sessions || [];
+  var errors   = s.errors   || [];
+  var out = "";
+
+  function popup(id, title, inner) {
+    return '<div class="pop-overlay" id="pop-' + id + '">' +
+      '<div class="pop-box">' +
+      '<div class="pop-title">' + title +
+      '<button class="pop-close" data-closepop="' + id + '">×</button></div>' +
+      inner + '</div></div>';
+  }
+
+  // Mensaje
+  var msgInner = "";
+  meta.msgs.forEach(function(m) {
+    msgInner += '<div class="pop-msg-block">' +
+      '<div class="pop-msg-label-row">' +
+      '<span class="pop-msg-label">' + esc(m.lang) + '</span>' +
+      '<button class="act-btn copy-msg-btn" data-copymsg="' + m.body.replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '" style="width:22px;height:22px;border-radius:5px" title="Copiar mensaje"><svg width="13" height="13" viewBox="0 0 14 14" fill="none"><rect x="4" y="4" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M2 9.5V2.5A1.5 1.5 0 0 1 3.5 1H9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button>' +
+      '</div>' +
+      '<div class="pop-msg-body">' + esc(m.body) + '</div></div>';
+  });
+  out += popup("msg-" + auto.id, "Mensajes — " + esc(auto.account), msgInner);
+
+  // Enviados
+  var sentItems = sentLog.length
+    ? sentLog.map(function(p) {
+        return '<div class="pop-profile"><div><div class="pop-pname">' + esc(p.name) + '</div>' +
+          '<div class="pop-preason">' + esc(p.reason) + '</div></div>' +
+          '<div class="pactions">' +
+          '<button class="act-btn" onclick="var u=this;navigator.clipboard.writeText(\'' + p.url.replace(/'/g, "\\'") + '\').then(function(){u.classList.add(\'ok\');setTimeout(function(){u.classList.remove(\'ok\')},1300)})" title="Copiar link"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="4" y="4" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M2 9.5V2.5A1.5 1.5 0 0 1 3.5 1H9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button>' +
+          '<a class="act-btn" href="' + esc(p.url) + '" target="_blank" title="Abrir perfil"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M5 2H2.5A1.5 1.5 0 0 0 1 3.5V11.5A1.5 1.5 0 0 0 2.5 13H10.5A1.5 1.5 0 0 0 12 11.5V9" stroke="currentColor" stroke-width="1.4"/><path d="M8 1H13v5M13 1L7 7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></a>' +
+          '</div></div>';
+      }).join("")
+    : '<div class="pop-empty">Sin registros aún</div>';
+  out += popup("sent-" + auto.id, "Enviados — " + esc(auto.account), sentItems);
+
+  // Saltados
+  var skipItems = skipLog.length
+    ? skipLog.map(function(p) {
+        return '<div class="pop-profile"><div><div class="pop-pname">' + esc(p.name) + '</div>' +
+          '<div class="pop-preason">' + esc(p.reason) + '</div></div>' +
+          '<div class="pactions">' +
+          '<button class="act-btn" onclick="var u=this;navigator.clipboard.writeText(\'' + p.url.replace(/'/g, "\\'") + '\').then(function(){u.classList.add(\'ok\');setTimeout(function(){u.classList.remove(\'ok\')},1300)})" title="Copiar link"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="4" y="4" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M2 9.5V2.5A1.5 1.5 0 0 1 3.5 1H9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button>' +
+          '<a class="act-btn" href="' + esc(p.url) + '" target="_blank" title="Abrir perfil"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M5 2H2.5A1.5 1.5 0 0 0 1 3.5V11.5A1.5 1.5 0 0 0 2.5 13H10.5A1.5 1.5 0 0 0 12 11.5V9" stroke="currentColor" stroke-width="1.4"/><path d="M8 1H13v5M13 1L7 7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></a>' +
+          '</div></div>';
+      }).join("")
+    : '<div class="pop-empty">Sin registros aún</div>';
+  out += popup("skip-" + auto.id, "Saltados — " + esc(auto.account), skipItems);
+
+  // Keywords
+  var incPills = meta.kwInc.map(function(k) { return '<span class="kp inc">' + esc(k) + '</span>'; }).join("");
+  var excPills = meta.kwExc.map(function(k) { return '<span class="kp exc">' + esc(k) + '</span>'; }).join("");
+  out += popup("kw-" + auto.id, "Keywords — " + esc(auto.account),
+    '<div class="pop-kw-sec"><div class="pop-kw-label inc">Incluidas</div><div class="pop-kw-list">' + incPills + '</div></div>' +
+    '<div class="pop-kw-sec"><div class="pop-kw-label exc">Excluidas (headline)</div><div class="pop-kw-list">' + excPills + '</div></div>');
+
+  // Historial
+  var histItems = sessions.length
+    ? sessions.slice().reverse().map(function(ses) {
+        var d = new Date(ses.startedAt);
+        var dateStr = d.toLocaleDateString("es-MX", { day:"2-digit", month:"short" }) + " · " +
+          d.toLocaleTimeString("es-MX", { hour:"2-digit", minute:"2-digit" });
+        return '<div class="pop-profile"><div>' +
+          '<div class="pop-pname">' + dateStr + ' · ' + (ses.profiles || 0) + ' perfiles</div>' +
+          '<div class="pop-preason">Env: ' + (ses.sent||0) + ' · Salt: ' + (ses.skipped||0) + (ses.conv ? " · " + ses.conv : "") + '</div>' +
+          '</div></div>';
+      }).join("")
+    : '<div class="pop-empty">Sin sesiones registradas aún</div>';
+  out += popup("hist-" + auto.id, "Historial — " + esc(auto.account), histItems);
+
+  // Errores
+  if (errors && errors.length) {
+    var errItems = errors.map(function(e) {
+      var uid = "ce-" + Math.random().toString(36).slice(2,7);
+      var msg = String(e);
+      return '<div class="pop-profile">' +
+        '<div class="pop-preason" style="font-family:monospace;font-size:11px;color:var(--red);word-break:break-all;flex:1">' + esc(msg) + '</div>' +
+        '<button class="act-btn copy-msg-btn" data-copymsg="' + esc(msg) + '" style="width:22px;height:22px;border-radius:5px;flex-shrink:0" title="Copiar error"><svg width="13" height="13" viewBox="0 0 14 14" fill="none"><rect x="4" y="4" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M2 9.5V2.5A1.5 1.5 0 0 1 3.5 1H9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button>' +
+        '</div>';
+    }).join("");
+    out += popup("err-" + auto.id, "Errores — " + esc(auto.account), errItems);
+  }
+
+  return out;
+}
+
+// ── Event delegation (no inline onclick) ──────────────────────
+document.addEventListener("click", function(e) {
+  var popBtn = e.target.closest("[data-pop]");
+  if (popBtn) { openPop(popBtn.dataset.pop); return; }
+
+  var closeBtn = e.target.closest("[data-closepop]");
+  if (closeBtn) { closePop(closeBtn.dataset.closepop); return; }
+
+  // Bug 4 + Bug B: click en overlay cierra el popup, con guard 300ms anti-race
+  if (e.target.classList.contains("pop-overlay") && Date.now() - _lastPopOpenedAt > 300) {
+    e.target.classList.remove("open");
+    return;
+  }
+
+
+
+  var copyBtn = e.target.closest(".copy-msg-btn");
+  if (copyBtn) {
+    var txt = copyBtn.getAttribute("data-copymsg");
+    navigator.clipboard.writeText(txt).then(function() {
+      copyBtn.classList.add("ok");
+      setTimeout(function() { copyBtn.classList.remove("ok"); }, 1300);
+    });
+    return;
+  }
+
+  var action = e.target.closest("[data-action]");
+  if (action && action.dataset.id) {
+    var id  = action.dataset.id;
+    var act = action.dataset.action;
+    if (act === "stop")   ctrl(id, "stop");
+    if (act === "launch") launchFlow(id);
+    if (act === "cfg")    ctrl(id, "configure");
+  }
+});
+
+// ── API calls ──────────────────────────────────────────────────
+async function ctrl(id, action) {
+  await fetch("/api/control", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: id, action: action })
+  });
+  render();
+}
+
+async function render() {
+  var AUTOMATIONS_LIST = [
+    { id:"inversores-es",  group:"outreach",    account:"Alejandro", lang:"ES · EN" },
+    { id:"brasil-pt-1",    group:"outreach",    account:"David",     lang:"Português" },
+    { id:"brasil-pt-2",    group:"outreach",    account:"Francisco", lang:"Português" },
+    { id:"followup-li",    group:"seguimiento", account:"todas las cuentas",    lang:"", desc:"Sin respuesta tras X días → mensaje" },
+    { id:"multicanal",     group:"seguimiento", account:"todas las cuentas",    lang:"", desc:"6 mensajes sin respuesta → email + LinkedIn" },
+    { id:"interaccion",    group:"seguimiento", account:"todas las cuentas",    lang:"", desc:"Like + comentario en publicaciones recientes" },
+    { id:"camaras-email",  group:"email",       account:"globalita",            lang:"", desc:"Directivos → correo personalizado" },
+    { id:"confirm-email",  group:"email",       account:"globalita",            lang:"", desc:"Lead activo sin confirmar → follow-up" },
+    { id:"agendado",       group:"email",       account:"globalita",            lang:"", desc:"Intención de reunión → crear evento" },
+    { id:"cal-confirm",    group:"crm",         account:"Google Calendar",      lang:"", desc:"Eventos amarillos → mensaje al gerente" },
+    { id:"crm-enrich",     group:"crm",         account:"LinkedIn + CRM",       lang:"", desc:"LinkedIn → rol + industria + región → CRM" },
+    { id:"news-monitor",   group:"crm",         account:"fuentes web",          lang:"", desc:"Empresas objetivo → alertas comerciales" }
+  ];
+
+  var res = await fetch("/api/status");
+  var all = await res.json();
+  // Bug A fix: capturar popups abiertos DESPUÉS del fetch — evita race condition
+  var openPopIds = [];
+  document.querySelectorAll(".pop-overlay.open").forEach(function(el) {
+    openPopIds.push(el.id);
+  });
+  var groups = {}, popupsHtml = "";
+
+  AUTOMATIONS_LIST.forEach(function(auto) {
+    var s = all[auto.id] || {};
+    if (!groups[auto.group]) groups[auto.group] = [];
+    groups[auto.group].push(buildCard(auto, s));
+    popupsHtml += buildPopups(auto, s);
+  });
+
+
+  document.getElementById("sections").innerHTML = Object.entries(groups).map(function(e) {
+    return '<div class="section"><div class="section-header"><span class="section-label">' +
+      (GROUP_LABELS[e[0]] || e[0]) +
+      '</span><div class="section-line"></div></div>' + e[1].join("") + '</div>';
+  }).join("");
+
+  if (openPopIds.length === 0) {
+    document.getElementById("popups").innerHTML = popupsHtml;
+  } else {
+    var tmp = document.createElement("div");
+    tmp.innerHTML = popupsHtml;
+    openPopIds.forEach(function(popId) {
+      var existing = document.getElementById(popId);
+      var updated  = tmp.querySelector("#" + popId);
+      if (existing && updated) {
+        var box    = existing.querySelector(".pop-box");
+        var newBox = updated.querySelector(".pop-box");
+        if (box && newBox) box.innerHTML = newBox.innerHTML;
+        existing.classList.add("open");
+      }
+    });
+    tmp.querySelectorAll(".pop-overlay").forEach(function(el) {
+      if (!document.getElementById(el.id)) {
+        document.getElementById("popups").appendChild(el.cloneNode(true));
+      }
+    });
+  }
+}
+
+async function stopAll() {
+  var ids = ["inversores-es","brasil-pt-1","brasil-pt-2"];
+  await Promise.all(ids.map(function(id) {
+    return fetch("/api/control", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: id, action: "stop" })
+    });
+  }));
+  render();
+}
+
+async function launchFlow(flowId) {
+  try {
+    var res = await fetch("/api/launch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ flowId: flowId })
+    });
+    if (res.status === 409) { alert("El agente ya está corriendo. Detenlo primero."); return; }
+    if (!res.ok) { alert("Error al lanzar."); return; }
+    render();
+  } catch(e) { alert("Error: " + e.message); }
+}
+
+async function launchAgent() {
+  var btn = document.getElementById("btn-launch");
+  if (btn.classList.contains("running")) return;
+  btn.disabled = true;
+  try {
+    var res = await fetch("/api/launch", { method: "POST" });
+    if (res.status === 409) { alert("El agente ya está corriendo."); return; }
+    if (!res.ok) { alert("Error al lanzar el agente."); return; }
+    btn.textContent = "■ Corriendo…";
+    btn.classList.replace("idle", "running");
+  } finally { btn.disabled = false; }
+}
+
+async function pollAgentStatus() {
+  try {
+    var res  = await fetch("/api/agent-status");
+    var data = await res.json();
+    var btn  = document.getElementById("btn-launch");
+    if (data.running) {
+      btn.textContent = "■ Corriendo…";
+      btn.classList.remove("idle"); btn.classList.add("running");
+    } else {
+      btn.textContent = "▶ Iniciar agente";
+      btn.classList.remove("running"); btn.classList.add("idle");
+    }
+  } catch(_) {}
+}
+
+setInterval(pollAgentStatus, 3000); pollAgentStatus();
+render(); setInterval(render, 2500);
+</script>
+</body>
+</html>
