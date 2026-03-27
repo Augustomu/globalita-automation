@@ -1,0 +1,11 @@
+node_modules/
+session/
+david agente invitaciones/
+francisco agente invitaciones/
+status/
+history.json
+processed-*.json
+pending-email.json
+quota-invitar.json
+*.log
+.env
