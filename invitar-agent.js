@@ -1292,6 +1292,9 @@ async function runAccount(cuenta, quotaState) {
       const resF1 = await abrirBusquedaGuardada(page, search, cuenta);
       if (!resF1.ok) { log(cuenta, `F1 falló — saltando lista`); continue; }
 
+      // Delay post-F1: dar tiempo a que carguen los resultados antes de F2
+      await new Promise(r => setTimeout(r, 3000));
+
       let enviadosEnLista = 0;
       let pagina          = 1;
 
