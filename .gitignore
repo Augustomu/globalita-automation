@@ -8,4 +8,5 @@ processed-*.json
 pending-email.json
 quota-invitar.json
 *.log
+*.bak
 .env
