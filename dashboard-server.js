@@ -27,6 +27,7 @@ function writeHistory(id, patch) {
 }
 
 const AUTOMATIONS = [
+  { id:"invitar-alejandro" }, { id:"invitar-david" }, { id:"invitar-francisco" },
   { id:"inversores-es"  }, { id:"brasil-pt-1"   }, { id:"brasil-pt-2"   },
   { id:"followup-li"    }, { id:"multicanal"     }, { id:"interaccion"   },
   { id:"camaras-email"  }, { id:"confirm-email"  }, { id:"agendado"      },
