@@ -16,6 +16,29 @@ const { chromium } = require('playwright');
 const path = require('path');
 const fs   = require('fs');
 
+// ─── DASHBOARD INTEGRATION ────────────────────────────────────────────────────
+const DASHBOARD = 'http://localhost:3000';
+
+// Mapeo cuenta → ID del dashboard-server.js
+const FLOW_ID = {
+  alejandro: 'invitar-alejandro',
+  david:     'invitar-david',
+  francisco: 'invitar-francisco',
+};
+
+async function reportState(cuenta, patch) {
+  const id = FLOW_ID[cuenta];
+  if (!id) return;
+  try {
+    await fetch(`${DASHBOARD}/api/update`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ id, patch }),
+    });
+  } catch (_) { /* dashboard offline — continuar */ }
+}
+
+
 // ─── CONFIGURACIÓN ────────────────────────────────────────────────────────────
 
 const SEARCHES = {
@@ -313,6 +336,13 @@ async function procesarPerfilesConScroll(page, cuenta, cuota, grupo, quotaState)
           await registrarEnvio(quotaState, cuenta, grupo);
           enviados++;
           log(cuenta, `Contadores: ${JSON.stringify(quotaState.counts[cuenta])} | Total: ${totalEnviado(quotaState, cuenta)}/${CUOTA_TOTAL}`);
+          await reportState(cuenta, {
+            state: 'running',
+            sent: totalEnviado(quotaState, cuenta),
+            counts: quotaState.counts[cuenta],
+            session: quotaState.counts[cuenta],
+            lastActivity: `Enviada ✅ a ${nombre} (total: ${totalEnviado(quotaState, cuenta)})`,
+          });
           await delay(2000 + Math.random() * 1500);
         } else if (resultado === 'requires-email' && profileUrl) {
           // D2: deduplicar en memoria — Sanjeev Munjal apareció 2x en log real
@@ -703,6 +733,13 @@ async function revisarPaginaCompleta(page, cuenta, cuotaRestante, grupo, quotaSt
       await registrarEnvio(quotaState, cuenta, grupo);
       enviados++;
       log(cuenta, `C1 ✓ Recuperado: ${nombre} | Total: ${totalEnviado(quotaState, cuenta)}/${CUOTA_TOTAL}`);
+      await reportState(cuenta, {
+        state: 'running',
+        sent: totalEnviado(quotaState, cuenta),
+        counts: quotaState.counts[cuenta],
+        session: quotaState.counts[cuenta],
+        lastActivity: `C1 ✅ ${nombre} (total: ${totalEnviado(quotaState, cuenta)})`,
+      });
       await delay(2000 + Math.random() * 1500);
     } else if (resultado === 'requires-email' && profileUrlC1) {
       // BUG-5 FIX: C1 ignoraba silenciosamente los requires-email
@@ -1186,9 +1223,11 @@ async function irSiguientePagina(page, cuenta) {
 
 async function runAccount(cuenta, quotaState) {
   log(cuenta, `════ Iniciando | cuota hoy: ${totalEnviado(quotaState, cuenta)}/${CUOTA_TOTAL} ════`);
+  await reportState(cuenta, { state: 'running', lastActivity: 'Iniciando...' });
 
   if (!quedanInvitaciones(quotaState, cuenta)) {
     log(cuenta, `Cuota completada — nada que hacer`);
+    await reportState(cuenta, { state: 'done', lastActivity: 'Cuota completada' });
     return;
   }
 
@@ -1229,6 +1268,7 @@ async function runAccount(cuenta, quotaState) {
       headless: false,
       viewport: { width: 1280, height: 860 },
     });
+    await reportState(cuenta, { state: 'running', startedAt: new Date().toISOString(), lastActivity: 'Browser iniciado' });
 
     const page = await browser.newPage();
     // F1: declarado fuera del for — deduplicación entre planItems (primary + compensación)
@@ -1296,6 +1336,13 @@ async function runAccount(cuenta, quotaState) {
         if (resF6 === 'enviada') {
           await registrarEnvio(quotaState, cuenta, pendiente.grupo);
           log(cuenta, `F6 Contadores: ${JSON.stringify(quotaState.counts[cuenta])} | Total: ${totalEnviado(quotaState, cuenta)}/${CUOTA_TOTAL}`);
+          await reportState(cuenta, {
+            state: 'running',
+            sent: totalEnviado(quotaState, cuenta),
+            counts: quotaState.counts[cuenta],
+            session: quotaState.counts[cuenta],
+            lastActivity: `F6 ✅ email enviado a ${pendiente.nombre} (total: ${totalEnviado(quotaState, cuenta)})`,
+          });
           // BUG-3 FIX: mutex en remoción — 3 cuentas paralelas pueden pisarse
           const ahora3r = Date.now(); const tope3r = ahora3r + 2000;
           while (_escribiendoPending && Date.now() < tope3r) { /* spin */ }
@@ -1325,11 +1372,19 @@ async function runAccount(cuenta, quotaState) {
 
   } catch (err) {
     log(cuenta, `ERROR: ${err.message}`);
+    await reportState(cuenta, { state: 'error', errors: [err.message], lastActivity: `Error: ${err.message}` });
   } finally {
     if (browser) await browser.close();
   }
 
   log(cuenta, `════ Fin | Total hoy: ${totalEnviado(quotaState, cuenta)}/${CUOTA_TOTAL} | ${JSON.stringify(quotaState.counts[cuenta])} ════`);
+  await reportState(cuenta, {
+    state: 'done',
+    sent: totalEnviado(quotaState, cuenta),
+    counts: quotaState.counts[cuenta],
+    session: quotaState.counts[cuenta],
+    lastActivity: `Completado — ${totalEnviado(quotaState, cuenta)} invitaciones enviadas`,
+  });
 }
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
