@@ -118,6 +118,22 @@ button:hover{background:var(--bg);border-color:#c8b8a8;color:var(--text)}
 .stats-table .bg-cred{background:var(--surface)}
 .stats-box{background:var(--bg);border-radius:8px;border:.5px solid var(--border);overflow:hidden}
 .sn-r{color:var(--red)}
+.sn-pu{color:#7c3aed}
+.tp-purple{background:#f5f3ff;color:#7c3aed;border-color:#ddd6fe}
+/* ── Error console popup ── */
+.err-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:300;align-items:center;justify-content:center}
+.err-overlay.open{display:flex}
+.err-box{background:#1a1814;border-radius:12px;width:540px;max-width:94vw;max-height:80vh;overflow-y:auto;box-shadow:0 24px 64px rgba(0,0,0,.55)}
+.err-box-hd{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #2e2a24}
+.err-box-title{font-size:13px;font-weight:600;color:#f0ece6;display:flex;align-items:center;gap:7px}
+.err-box-badge{font-size:10px;padding:2px 7px;border-radius:4px;background:#ef4444;color:#fff;font-weight:700}
+.err-box-x{width:26px;height:26px;border-radius:6px;border:1px solid #3a3630;background:transparent;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#8a8278}
+.err-box-x:hover{background:#2e2a24}
+.err-box-body{padding:14px 18px;font-family:'Courier New',monospace;font-size:12px;line-height:1.7}
+.err-blk{margin-bottom:14px}
+.err-blk-lbl{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#6b7280;margin-bottom:5px}
+.err-kv{padding:2px 0}.err-k{color:#93c5fd}.err-v{color:#d1fae5}.err-v.red{color:#fca5a5}.err-v.amber{color:#fde68a}.err-v.gray{color:#6b7280}
+.err-stack{background:#111;border-radius:6px;padding:9px 11px;font-size:11px;color:#6b7280;white-space:pre-wrap;word-break:break-all}
 </style>
 </head>
 <body>
@@ -133,6 +149,16 @@ button:hover{background:var(--bg);border-color:#c8b8a8;color:var(--text)}
 
   <div id="sections"></div>
   <div id="popups"></div>
+</div>
+<!-- Error console popup -->
+<div class="err-overlay" id="err-overlay" onclick="if(event.target===this)closeErr()">
+  <div class="err-box">
+    <div class="err-box-hd">
+      <div class="err-box-title">🔴 <span id="err-name"></span><span class="err-box-badge" id="err-badge"></span></div>
+      <button class="err-box-x" onclick="closeErr()">×</button>
+    </div>
+    <div class="err-box-body" id="err-body"></div>
+  </div>
 </div>
 
 <script>
@@ -174,6 +200,185 @@ const GROUP_LABELS  = { outreach:"Cancelación de invitaciones + Mensaje de cont
 const PLATFORM_ICON = { linkedin:"🔗", email:"✉", calendar:"📅", crm:"🗂", news:"📰" };
 
 const STATE_LABELS = { idle:"En espera", running:"Activo", paused:"Pausado", stopped:"Detenido", error:"Error", done:"Completado", plan:"Planificado" };
+
+// ── INVITACIONES — config ──────────────────────────────────────
+const INV_FLOWS = [
+  { id:"invitar-alejandro", label:"LinkedIn: Alejandro", color:"#c0392b", lang:"ES / EN", region:"US · MX",
+    listas:"Angel investor US · Angel investor MX · Seed MX · Family Office MX",
+    grupos:["US","MX"], obj:{US:50,MX:50},
+    kwInc:["angel investor","managing partner","sfo","venture capital","seed investor","family office","private equity","fund manager"],
+    kwExc:["recruiter","hr","student","trainee","vendedor","sdr"] },
+  { id:"invitar-david", label:"LinkedIn: David", color:"#1a9e6e", lang:"PT", region:"São Paulo",
+    listas:"Gerente SP · Consultor SP",
+    grupos:["gerente","consultor"], obj:{gerente:70,consultor:30},
+    kwInc:["gerente de operações","operations manager","plant manager","diretor industrial","consultor industrial"],
+    kwExc:["recruiter","vendedor","estagiário","trainee","developer"] },
+  { id:"invitar-francisco", label:"LinkedIn: Francisco", color:"#d97706", lang:"PT", region:"RJ · MG · ES · BH",
+    listas:"Gerente RJ MG ES BH · Consultor RJ MG ES BH",
+    grupos:["gerente","consultor"], obj:{gerente:70,consultor:30},
+    kwInc:["gerente de operações","operations manager","plant manager","diretor industrial","consultor industrial"],
+    kwExc:["recruiter","vendedor","estagiário","trainee","developer"] },
+];
+const CUOTA_TOTAL = 100;
+var _lastStatus = {};
+var _invErrPopEl = null;
+
+function buildInvCard(flow, s) {
+  var state   = s.state || "idle";
+  var cnt     = s.counts || {};
+  var ses     = s.session || {};
+  var pending = s.pendingEmail || [];
+  var nEmail  = pending.filter(function(p){return p.reason==="requires-email";}).length;
+  var nFall   = pending.length;
+  var lr      = (s.sessions||[]).slice(-1)[0] || null;
+  var lastDate= lr ? new Date(lr.startedAt||"").toLocaleString("es",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}) : "—";
+  var lastDur = lr ? (lr.duration||"—") : "—";
+  var lastAct = s.lastActivity || "";
+  var sesEmail    = s.sesEmail    || 0;
+  var sesSinEmail = s.sesSinEmail || 0;
+  var sesTot = sesEmail + sesSinEmail || flow.grupos.reduce(function(a,g){return a+(ses[g]||0);},0);
+  var totTot = Object.values(cnt).reduce(function(a,b){return a+b;},0) || s.sent || 0;
+  var running=state==="running", done=state==="done", err=state==="error", stopped=state==="stopped";
+  var dotCls = running?"ad-green":done?"ad-orange":"ad-gray";
+  var stateCls = running?"s-running":done?"s-done":err?"s-error":stopped?"s-paused":"s-idle";
+  var toggleBtn = running
+    ? '<button class="toggle-btn toggle-detener" data-action="stop"   data-id="'+flow.id+'">■ Detener</button>'
+    : (done||stopped||err)
+    ? '<button class="toggle-btn toggle-reiniciar" data-action="launch" data-id="'+flow.id+'">↺ Reiniciar</button>'
+    : '<button class="toggle-btn toggle-iniciar"   data-action="launch" data-id="'+flow.id+'">▶ Iniciar</button>';
+  var stTag = stateTag(state);
+  var tagBtns = stTag;
+  tagBtns += '<button class="tag-popup tp-blue" data-pop="inv-cemail-'+flow.id+'">C. Email'+(nEmail?" ("+nEmail+")":"")+" ↗</button>";
+  tagBtns += '<button class="tag-popup tp-gray" data-pop="inv-sinemail-'+flow.id+'">S/N Email ↗</button>';
+  tagBtns += '<button class="tag-popup tp-red"  data-pop="inv-fallidos-'+flow.id+'">Fallidos'+(nFall?" ("+nFall+")":"")+" ↗</button>";
+  tagBtns += '<button class="tag-popup tp-gray" data-pop="inv-kw-'+flow.id+'">Keywords ↗</button>';
+  var grupos = flow.grupos;
+  var tbl = '<div class="stats-box" style="margin-top:10px"><table class="stats-table"><thead><tr><th style="width:34px"></th>';
+  grupos.forEach(function(g){ tbl += '<th class="bl">'+g.toUpperCase()+'</th>'; });
+  tbl += '<th class="bl inv-th-bold">TOTAL</th><th class="bl inv-th-blue">C.EMAIL</th><th class="bl inv-th-purple">S/N EMAIL</th></tr></thead><tbody>';
+  tbl += '<tr style="border-bottom:.5px solid var(--border)"><td class="row-label">Ses.</td>';
+  grupos.forEach(function(g){ tbl += '<td class="bl"><div class="stat-n sn-g">'+(ses[g]||0)+'</div></td>'; });
+  tbl += '<td class="bl"><div class="stat-n" style="font-weight:600">'+(sesTot||"—")+'</div></td>';
+  tbl += '<td class="bl"><div class="stat-n sn-b">'+(sesEmail||"—")+'</div></td>';
+  tbl += '<td class="bl"><div class="stat-n sn-purple" style="color:#7c3aed">'+(sesSinEmail||"—")+'</div></td></tr>';
+  tbl += '<tr><td class="row-label">Tot.</td>';
+  grupos.forEach(function(g){ tbl += '<td class="bl"><div class="stat-n sn-g">'+(cnt[g]||0)+'</div></td>'; });
+  tbl += '<td class="bl"><div class="stat-n" style="font-weight:600">'+(totTot||"—")+'</div></td>';
+  tbl += '<td class="bl"><div class="stat-n sn-m">—</div></td>';
+  tbl += '<td class="bl"><div class="stat-n" style="color:#7c3aed">'+(totTot||"—")+'</div></td></tr>';
+  tbl += '</tbody></table></div>';
+  var h = '<div class="card '+stateCls+'"><div>';
+  h += '<div class="card-acct"><span class="acct-dot '+dotCls+'" style="background:'+flow.color+'"></span>'+esc(flow.label)+'</div>';
+  h += '<div class="card-meta">';
+  h += '<div class="card-meta-line">Última corrida: <span>'+lastDate+(lastDur!=="—"?" · "+lastDur:"")+'</span></div>';
+  h += '<div class="card-meta-line">Listas: <span>'+esc(flow.listas)+'</span></div>';
+  h += '<div class="card-meta-line">Región: <span>'+esc(flow.region)+'</span> · Idioma: <span>'+esc(flow.lang)+'</span></div>';
+  h += '</div>';
+  if (lastAct) h += '<div class="card-activity">↳ '+esc(lastAct)+'</div>';
+  h += '<div class="card-tags">'+tagBtns+'</div>';
+  h += tbl;
+  h += '</div><div class="card-right" style="min-width:90px">'+toggleBtn+'</div></div>';
+  return h;
+}
+
+function buildInvPopups(flow, s) {
+  var pending = s.pendingEmail || [];
+  var out = "";
+  function popup(id, title, inner) {
+    return '<div class="pop-overlay" id="pop-'+id+'"><div class="pop-box">' +
+      '<div class="pop-title">'+title+'<button class="pop-close" data-closepop="'+id+'">×</button></div>' +
+      inner+'</div></div>';
+  }
+  function actions(p, showGuardar) {
+    var url = p.profileUrl ? (p.profileUrl.startsWith("http") ? p.profileUrl : "https://www.linkedin.com/"+p.profileUrl.replace(/^\/+/,"")) : "";
+    var hasErr = !!p.error;
+    var pj = JSON.stringify(p).replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;");
+    var errBtn = '<button class="act-btn" style="width:28px;height:28px;border-radius:6px;'+(hasErr?"color:var(--red)":"opacity:.3;cursor:default")+'"'+
+      (hasErr?' onclick="openInvErr(\''+pj+'\')"':'')+' title="'+(hasErr?"Ver error":"Sin error")+'">⚠</button>';
+    var save = showGuardar ? '<button class="act-btn" style="width:28px;height:28px;border-radius:6px;color:var(--green)" onclick="rmInvPending(\''+p.profileUrl.replace(/'/g,"\\'")+"','"+flow.id+'\')" title="Marcar procesado">✓</button>' : "";
+    var urlSafe = url.replace(/'/g,"\\'");
+    var copy = '<button class="act-btn" onclick="navigator.clipboard.writeText(\''+urlSafe+'\')" title="Copiar"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="4" y="4" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M2 9.5V2.5A1.5 1.5 0 0 1 3.5 1H9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button>';
+    var open  = '<a class="act-btn" href="'+url+'" target="_blank"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M5 2H2.5A1.5 1.5 0 0 0 1 3.5V11.5A1.5 1.5 0 0 0 2.5 13H10.5A1.5 1.5 0 0 0 12 11.5V9" stroke="currentColor" stroke-width="1.4"/><path d="M8 1H13v5M13 1L7 7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></a>';
+    return '<div class="pactions">'+errBtn+save+copy+open+'</div>';
+  }
+  var emailItems = pending.filter(function(p){return p.reason==="requires-email";});
+  var yaConItems = pending.filter(function(p){return p.reason==="ya-conectado";});
+  // C. Email
+  var emailHtml = emailItems.length ? emailItems.map(function(p){
+    return '<div class="pop-profile"><div><div class="pop-pname">'+esc(p.nombre||"—")+'</div>' +
+      '<div class="pop-preason">requiere verificación · augusto@globalita.io</div>' +
+      '<div class="pop-preason"><span class="kp inc" style="margin-top:3px;display:inline-block">con email</span> ' +
+      '<span class="kp" style="background:var(--'+(((p.intentos||0)>=2)?"amber":"slate")+'-bg);color:var(--'+(((p.intentos||0)>=2)?"amber":"slate")+');border:.5px solid var(--'+(((p.intentos||0)>=2)?"amber":"slate")+'-br);margin-left:4px">'+(p.intentos||0)+' / 4 intentos</span></div>' +
+      '</div>'+actions(p,false)+'</div>';
+  }).join("") : '<div class="pop-empty">Sin pendientes de email ✓</div>';
+  out += popup("inv-cemail-"+flow.id, "Con Email — "+esc(flow.label), emailHtml);
+  // S/N Email
+  var tot = Object.values(s.counts||{}).reduce(function(a,b){return a+b;},0)||s.sent||0;
+  out += popup("inv-sinemail-"+flow.id, "Sin Email — "+esc(flow.label), '<div class="pop-empty">'+tot+' invitaciones sin requerir email. Ver log del agente.</div>');
+  // Fallidos
+  var fallHtml = "";
+  if (emailItems.length) {
+    fallHtml += '<div style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:8px">Con email ('+emailItems.length+')</div>';
+    fallHtml += emailItems.map(function(p){
+      return '<div class="pop-profile"><div><div class="pop-pname">'+esc(p.nombre||"—")+'</div>' +
+        '<div class="pop-preason"><span class="kp inc">con email</span></div></div>'+actions(p,false)+'</div>';
+    }).join("");
+  }
+  if (yaConItems.length) {
+    fallHtml += '<div style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:12px 0 8px">Ya conectados ('+yaConItems.length+')</div>';
+    fallHtml += yaConItems.map(function(p){
+      return '<div class="pop-profile"><div><div class="pop-pname">'+esc(p.nombre||"—")+'</div>' +
+        '<div class="pop-preason"><span class="kp exc">ya conectado</span> · sin botón Conectar</div></div>'+actions(p,true)+'</div>';
+    }).join("");
+  }
+  if (!pending.length) fallHtml = '<div class="pop-empty">Sin fallidos ✓</div>';
+  out += popup("inv-fallidos-"+flow.id, "Fallidos — "+esc(flow.label), fallHtml);
+  // Keywords
+  var incPills = flow.kwInc.map(function(k){return '<span class="kp inc">'+esc(k)+'</span>';}).join("");
+  var excPills = flow.kwExc.map(function(k){return '<span class="kp exc">'+esc(k)+'</span>';}).join("");
+  out += popup("inv-kw-"+flow.id, "Keywords — "+esc(flow.label),
+    '<div class="pop-kw-sec"><div class="pop-kw-label inc">Incluidas</div><div class="pop-kw-list">'+incPills+'</div></div>' +
+    '<div class="pop-kw-sec"><div class="pop-kw-label exc">Excluidas</div><div class="pop-kw-list">'+excPills+'</div></div>');
+  return out;
+}
+
+function openInvErr(pStr) {
+  try {
+    var p = JSON.parse(pStr);
+    var e = p.error || {};
+    var ts = e.timestamp ? new Date(e.timestamp).toLocaleString("es") : "—";
+    if (!_invErrPopEl) {
+      _invErrPopEl = document.createElement("div");
+      _invErrPopEl.className = "pop-overlay";
+      _invErrPopEl.id = "inv-err-overlay";
+      _invErrPopEl.addEventListener("click", function(ev){ if(ev.target===_invErrPopEl) _invErrPopEl.classList.remove("open"); });
+      document.body.appendChild(_invErrPopEl);
+    }
+    _invErrPopEl.innerHTML = '<div class="err-popup-dark">' +
+      '<div class="err-hd"><div class="err-title">🔴 '+esc(p.nombre||"—")+' <span class="err-badge">'+(e.funcion||"ERROR")+'</span></div>' +
+      '<button class="err-x" onclick="document.getElementById(\'inv-err-overlay\').classList.remove(\'open\')">×</button></div>' +
+      '<div class="err-body">' +
+      '<div class="err-block"><div class="err-label">Origen</div>' +
+      '<div><span class="ek">función → </span><span class="ev">'+(e.funcion||"—")+'</span></div>' +
+      '<div><span class="ek">fase &nbsp;&nbsp;&nbsp;→ </span><span class="ev-a">'+(e.fase||"—")+'</span></div>' +
+      '<div><span class="ek">timestamp→ </span><span class="ev-g">'+ts+'</span></div></div>' +
+      '<div class="err-block"><div class="err-label">Selector</div><div class="ev-a">'+(e.selector||"—")+'</div></div>' +
+      '<div class="err-block"><div class="err-label">Mensaje</div><div class="ev-r">'+(e.mensaje||e.message||"—")+'</div></div>' +
+      '<div class="err-block"><div class="err-label">Stack trace</div><div class="err-stack">'+(e.stack||"—")+'</div></div>' +
+      '</div></div>';
+    _invErrPopEl.classList.add("open");
+  } catch(_) {}
+}
+
+async function rmInvPending(profileUrl, flowId) {
+  var s = _lastStatus[flowId] || {};
+  var updated = (s.pendingEmail||[]).filter(function(p){return p.profileUrl!==profileUrl;});
+  try {
+    await fetch("/api/update", {method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({id:flowId,patch:{pendingEmail:updated}})});
+  } catch(_) {}
+  render();
+}
 const STATE_COLORS = { running:"tag-running", paused:"tag-paused", error:"tag-error", idle:"tag-idle", plan:"tag-plan", done:"tag-done", stopped:"tag-stopped" };
 
 // ── Clock ──────────────────────────────────────────────────────
@@ -271,21 +476,28 @@ function buildCard(auto, s) {
 
   // Stats table — columna izquierda, debajo de los tags
   if (meta) {
+    var sesEmail    = s.sesEmail    || 0;
+    var sesSinEmail = s.sesSinEmail || 0;
+    var sesTotalEnv = (sesEmail + sesSinEmail) || sent || 0;
+    var pendingList = s.pendingEmail || [];
+    var nFall  = pendingList.length;
+    var nEmail = pendingList.filter(function(p){return p.reason==='requires-email';}).length;
+
     h += '<div class="stats-box" style="margin-top:10px">';
     h += '<table class="stats-table">';
     h += '<thead><tr>';
     h += '<th style="width:34px"></th>';
-    h += '<th class="bl">Enviados</th>';
-    h += '<th class="bl">Saltados</th>';
-    h += '<th class="bl">Conv.</th>';
+    h += '<th class="bl">Total env.</th>';
+    h += '<th class="bl" style="color:var(--blue)">C. Email</th>';
+    h += '<th class="bl" style="color:#7c3aed">S/N Email</th>';
     h += '<th class="bl bl-dark bg-cred">Créditos</th>';
     h += '</tr></thead>';
     h += '<tbody>';
     h += '<tr style="border-bottom:.5px solid var(--border)">';
     h += '<td class="row-label">Ses.</td>';
-    h += '<td class="bl" style="cursor:pointer" data-pop="sent-' + auto.id + '"><div class="stat-n sn-g">' + (sent || "—") + '</div></td>';
-    h += '<td class="bl" style="cursor:pointer" data-pop="skip-' + auto.id + '"><div class="stat-n sn-m">' + (skipped || "—") + '</div></td>';
-    h += '<td class="bl"><div class="stat-n sn-b">' + (convSes || "—") + '</div></td>';
+    h += '<td class="bl"><div class="stat-n sn-g">' + (sesTotalEnv || "—") + '</div></td>';
+    h += '<td class="bl"><div class="stat-n" style="color:var(--blue)">' + (sesEmail || "—") + '</div></td>';
+    h += '<td class="bl"><div class="stat-n sn-pu">' + (sesSinEmail || "—") + '</div></td>';
     h += '<td class="bl bl-dark bg-cred" rowspan="2" style="vertical-align:middle">';
     if (credVal !== null) {
       h += '<div class="stat-n ' + credCls + '" style="font-size:18px">' + credVal + '</div>';
@@ -296,20 +508,28 @@ function buildCard(auto, s) {
     h += '</td></tr>';
     h += '<tr>';
     h += '<td class="row-label">Tot.</td>';
-    h += '<td class="bl" style="cursor:pointer" data-pop="sent-' + auto.id + '"><div class="stat-n sn-g">' + (totalSent || "—") + '</div></td>';
-    h += '<td class="bl" style="cursor:pointer" data-pop="skip-' + auto.id + '"><div class="stat-n sn-m">' + (totalSkip || "—") + '</div></td>';
-    h += '<td class="bl"><div class="stat-n sn-b">' + (convTot || "—") + '</div></td>';
+    h += '<td class="bl"><div class="stat-n sn-g">' + (totalSent || "—") + '</div></td>';
+    h += '<td class="bl"><div class="stat-n" style="color:var(--blue)">—</div></td>';
+    h += '<td class="bl"><div class="stat-n sn-pu">' + (totalSent || "—") + '</div></td>';
     h += '</tr>';
     h += '</tbody></table></div>';
+
+    // Fallidos button (debajo de la tabla, solo si hay pendientes)
+    if (nFall > 0) {
+      h += '<div style="margin-top:6px">';
+      h += '<button class="tag-popup tp-red" data-pop="fall-' + auto.id + '">Fallidos (' + nFall + ') ↗</button>';
+      if (nEmail > 0) h += ' <button class="tag-popup tp-blue" data-pop="fall-' + auto.id + '">C. Email (' + nEmail + ') ↗</button>';
+      h += '</div>';
+    }
   }
   h += '</div>'; // end left
 
-  // Right column — solo botón
+  // Right column — botón único según estado
   h += '<div class="card-right" style="min-width:90px">';
-  if (isActive) h += '<button class="btn-stop"  data-action="stop"   data-id="' + auto.id + '">Detener</button>';
-  if (isIdle)   h += '<button class="btn-run"   data-action="launch"  data-id="' + auto.id + '">Iniciar</button>';
-  if (isPlan)   h += '<button class="btn-cfg"   data-action="cfg"     data-id="' + auto.id + '">Configurar</button>';
-  if (isDone)   h += '<button class="btn-run"   data-action="launch"  data-id="' + auto.id + '">Reiniciar</button>';
+  if (isActive) h += '<button class="btn-stop"  data-action="stop"    data-id="' + auto.id + '">■ Detener</button>';
+  else if (isDone) h += '<button class="btn-run" data-action="launch"  data-id="' + auto.id + '">↺ Reiniciar</button>';
+  else if (isPlan) h += '<button class="btn-cfg" data-action="cfg"     data-id="' + auto.id + '">Configurar</button>';
+  else             h += '<button class="btn-run" data-action="launch"  data-id="' + auto.id + '">▶ Iniciar</button>';
   h += '</div>'; // end right
 
   h += '</div>'; // end card
@@ -406,8 +626,60 @@ function buildPopups(auto, s) {
     out += popup("err-" + auto.id, "Errores — " + esc(auto.account), errItems);
   }
 
+  // ── Fallidos (pendingEmail del invitar-agent) ──
+  var pendingList = s.pendingEmail || [];
+  if (pendingList.length) {
+    var emailFail = pendingList.filter(function(p){ return p.reason === 'requires-email'; });
+    var yaConFail = pendingList.filter(function(p){ return p.reason === 'ya-conectado'; });
+    function pendingItem(p) {
+      var isE = p.reason === 'requires-email';
+      var url = p.profileUrl ? (p.profileUrl.startsWith('http') ? p.profileUrl : 'https://www.linkedin.com/' + p.profileUrl.replace(/^\/+/,'')) : '#';
+      var intBadge = isE ? ' <span style="font-size:10px;color:var(--hint)">' + (p.intentos||0) + '/4 intentos</span>' : '';
+      var tagStyle = isE ? 'background:var(--blue-bg);color:var(--blue);border-color:var(--blue-br)' : 'background:#fefce8;color:#92400e;border-color:#fde68a';
+      var tagLbl   = isE ? 'con email' : 'ya conectado';
+      var pData    = JSON.stringify(p).replace(/\\/g,'\\\\').replace(/'/g,"&#39;").replace(/"/g,'&quot;');
+      var errBtn   = p.error
+        ? '<button class="act-btn" onclick="showErr(\'' + pData + '\')" title="Ver error" style="color:var(--red);border-color:var(--red-br);background:var(--red-bg)">⚠</button>'
+        : '<span class="act-btn" style="opacity:.25;cursor:default">⚠</span>';
+      return '<div class="pop-profile"><div style="flex:1"><div class="pop-pname">' + esc(p.nombre||'—') + '</div>' +
+        '<div class="pop-preason"><span class="tag" style="' + tagStyle + '">' + tagLbl + '</span>' + intBadge + '</div></div>' +
+        '<div class="pactions" style="display:flex;gap:4px;align-items:center">' + errBtn +
+        '<button class="act-btn" onclick="navigator.clipboard.writeText(\'' + url + '\')" title="Copiar link">' +
+        '<svg width="13" height="13" viewBox="0 0 14 14" fill="none"><rect x="4" y="4" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M2 9.5V2.5A1.5 1.5 0 0 1 3.5 1H9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button>' +
+        '<a class="act-btn" href="' + url + '" target="_blank" title="Abrir">' +
+        '<svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M5 2H2.5A1.5 1.5 0 0 0 1 3.5V11.5A1.5 1.5 0 0 0 2.5 13H10.5A1.5 1.5 0 0 0 12 11.5V9" stroke="currentColor" stroke-width="1.4"/><path d="M8 1H13v5M13 1L7 7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></a>' +
+        '</div></div>';
+    }
+    var fallInner = '';
+    if (emailFail.length) fallInner += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--blue);padding:6px 0 8px">Con email (' + emailFail.length + ')</div>' + emailFail.map(pendingItem).join('');
+    if (yaConFail.length) fallInner += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:#92400e;padding:10px 0 8px">Ya conectados (' + yaConFail.length + ')</div>' + yaConFail.map(pendingItem).join('');
+    out += popup('fall-' + auto.id, 'Fallidos — ' + esc(auto.account), fallInner);
+  }
+
   return out;
 }
+
+// ── Error console popup ──────────────────────────────────────
+function showErr(raw) {
+  var p = typeof raw === 'string' ? JSON.parse(raw.replace(/&quot;/g,'"')) : raw;
+  var e = p.error || {};
+  document.getElementById('err-name').textContent  = p.nombre || '—';
+  document.getElementById('err-badge').textContent = e.funcion || 'ERROR';
+  var ts = e.timestamp ? new Date(e.timestamp).toLocaleString('es') : '—';
+  document.getElementById('err-body').innerHTML =
+    '<div class="err-blk"><div class="err-blk-lbl">Origen</div>' +
+    '<div class="err-kv"><span class="err-k">función  → </span><span class="err-v">' + esc(e.funcion||'—') + '</span></div>' +
+    '<div class="err-kv"><span class="err-k">fase     → </span><span class="err-v amber">' + esc(e.fase||'—') + '</span></div>' +
+    '<div class="err-kv"><span class="err-k">timestamp→ </span><span class="err-v gray">' + esc(ts) + '</span></div></div>' +
+    '<div class="err-blk"><div class="err-blk-lbl">Selector fallido</div>' +
+    '<div class="err-kv"><span class="err-v amber">' + esc(e.selector||'—') + '</span></div></div>' +
+    '<div class="err-blk"><div class="err-blk-lbl">Mensaje</div>' +
+    '<div class="err-kv"><span class="err-v red">' + esc(e.mensaje||e.message||'—') + '</span></div></div>' +
+    '<div class="err-blk"><div class="err-blk-lbl">Stack trace</div>' +
+    '<div class="err-stack">' + esc(e.stack||'—') + '</div></div>';
+  document.getElementById('err-overlay').classList.add('open');
+}
+function closeErr() { document.getElementById('err-overlay').classList.remove('open'); }
 
 // ── Event delegation (no inline onclick) ──────────────────────
 document.addEventListener("click", function(e) {
@@ -473,6 +745,7 @@ async function render() {
 
   var res = await fetch("/api/status");
   var all = await res.json();
+  _lastStatus = all; // guardar para rmInvPending
   // Bug A fix: capturar popups abiertos DESPUÉS del fetch — evita race condition
   var openPopIds = [];
   document.querySelectorAll(".pop-overlay.open").forEach(function(el) {
@@ -487,8 +760,18 @@ async function render() {
     popupsHtml += buildPopups(auto, s);
   });
 
+  // ── Sección Invitaciones ──
+  var invCards = INV_FLOWS.map(function(flow){
+    return buildInvCard(flow, all[flow.id]||{});
+  }).join("");
+  var invPopups = INV_FLOWS.map(function(flow){
+    return buildInvPopups(flow, all[flow.id]||{});
+  }).join("");
+  popupsHtml += invPopups;
 
-  document.getElementById("sections").innerHTML = Object.entries(groups).map(function(e) {
+  var invSection = '<div class="section"><div class="section-header"><span class="section-label">Invitaciones diarias · 3 cuentas</span><div class="section-line"></div></div>' + invCards + '</div>';
+
+  document.getElementById("sections").innerHTML = invSection + Object.entries(groups).map(function(e) {
     return '<div class="section"><div class="section-header"><span class="section-label">' +
       (GROUP_LABELS[e[0]] || e[0]) +
       '</span><div class="section-line"></div></div>' + e[1].join("") + '</div>';
