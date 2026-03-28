@@ -260,7 +260,8 @@ function buildInvCard(flow, s) {
   var nEmail  = pending.filter(function(p){return p.reason==="requires-email";}).length;
   var nFall   = pending.length;
   var lr      = (s.sessions||[]).slice(-1)[0] || null;
-  var lastDate= lr ? new Date(lr.startedAt||"").toLocaleString("es",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}) : "—";
+  var startedRaw = (lr && lr.startedAt) || s.startedAt || "";
+  var lastDate= startedRaw ? new Date(startedRaw).toLocaleString("es",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}) : "—";
   var lastDur = lr ? (lr.duration||"—") : "—";
   var lastAct = s.lastActivity || "";
   var sesEmail    = s.sesEmail    || 0;

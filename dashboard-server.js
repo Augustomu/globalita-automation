@@ -141,7 +141,7 @@ const server = http.createServer((req, res) => {
   var logsMatch = url.pathname.match(/^\/api\/logs\/(alejandro|david|francisco)$/);
   if (req.method === "GET" && logsMatch) {
     var cuenta = logsMatch[1];
-    var logPath = path.join(__dirname, "linkedin-agent", "invitar-agent.log");
+    var logPath = path.join(__dirname, "invitar-agent.log");
     try {
       var raw = fs.readFileSync(logPath, "utf8");
       var lines = raw.split("\n").filter(function(l) {
