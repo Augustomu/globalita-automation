@@ -272,6 +272,12 @@ async function abrirBusquedaGuardada(page, busqueda, cuenta) {
     await delay(800);
     await cerrarBanners(page);
 
+    // Diagnóstico: verificar que la URL tiene savedSearchId (necesario para F5)
+    const f1Url = new URL(page.url());
+    if (!f1Url.searchParams.get('savedSearchId')) {
+      log(cuenta, `F1 [diag] URL sin savedSearchId: ${page.url()}`);
+    }
+
     log(cuenta, `F1 ✓`);
     return { ok: true };
   } catch (err) {
@@ -1204,50 +1210,36 @@ async function enviarConEmail(page, profileSalesNavUrl, nombre, cuenta) {
 // ═══════════════════════════════════════════════════════════════
 
 async function irSiguientePagina(page, cuenta) {
-  const nextEl = await page.waitForSelector(
-    'button[aria-label="Next"], button[aria-label="Siguiente"], button[aria-label="Próxima"], button[aria-label="Próximo"]',
-    { timeout: 5000 }
-  ).catch(() => null);
-  if (!nextEl) return { ok: false };
+  const urlActual = new URL(page.url());
+  const paginaAntes = parseInt(urlActual.searchParams.get('page') || '1');
+  const paginaSiguiente = paginaAntes + 1;
 
-  const nextBtn = page.locator('button[aria-label="Next"]')
-    .or(page.locator('button[aria-label="Siguiente"]'))
-    .or(page.locator('button[aria-label="Próxima"]'))
-    .or(page.locator('button[aria-label="Próximo"]'))
-    .first();
-
-  const disabled = await nextBtn.isDisabled().catch(() => true);
-  if (disabled) return { ok: false };
-
-  const urlAntes = page.url();
-  const paginaAntes = new URL(page.url()).searchParams.get('page') || '1';
-
-  await nextBtn.click();
-  log(cuenta, `F5 [diag] URL antes: ${urlAntes}`);
-
-  // Esperar que la URL cambie — no que aparezcan perfiles (pueden ser del DOM anterior)
-  try {
-    await page.waitForFunction(
-      (urlPrev) => window.location.href !== urlPrev,
-      urlAntes,
-      { timeout: 10000 }
-    );
-  } catch {
-    // URL no cambió — fin real de lista
-    log(cuenta, `F5 ✗ URL no cambió tras click — fin de lista`);
+  // Construir URL sin sessionId — solo savedSearchId + page
+  const savedSearchId = urlActual.searchParams.get('savedSearchId');
+  if (!savedSearchId) {
+    log(cuenta, `F5 ✗ URL sin savedSearchId — no se puede paginar por URL`);
     return { ok: false };
   }
 
-  log(cuenta, `F5 [diag] URL después: ${page.url()}`);
+  const urlSiguiente = `https://www.linkedin.com/sales/search/people?savedSearchId=${savedSearchId}&page=${paginaSiguiente}`;
+
+  log(cuenta, `F5 [diag] Navegando directo a: ${urlSiguiente}`);
+
+  await page.goto(urlSiguiente, { waitUntil: 'domcontentloaded', timeout: 15000 });
+
+  // Verificar que cargaron perfiles nuevos
+  try {
+    await page.waitForSelector(
+      'ol li:has(a[href*="/sales/lead/"]), ol li:has(a[href*="/sales/people/"]), ul li:has(a[href*="/sales/lead/"]), ul li:has(a[href*="/sales/people/"])',
+      { timeout: 15000 }
+    );
+  } catch {
+    log(cuenta, `F5 ✗ Página ${paginaSiguiente} no cargó perfiles — fin de lista`);
+    return { ok: false };
+  }
 
   await delay(2000);
   await cerrarBanners(page);
-
-  // Esperar que los nuevos perfiles carguen
-  await page.waitForSelector(
-    'ol li:has(a[href*="/sales/lead/"]), ol li:has(a[href*="/sales/people/"]), ul li:has(a[href*="/sales/lead/"]), ul li:has(a[href*="/sales/people/"])',
-    { timeout: 15000 }
-  ).catch(() => {});
 
   const paginaDespues = new URL(page.url()).searchParams.get('page') || '?';
   log(cuenta, `F5 ✓ Página ${paginaAntes} → ${paginaDespues}`);
