@@ -295,3 +295,20 @@ Cuando se te pide testear caminos o resolver un bug:
 - Podés crear todos los caminos adicionales que necesites más allá de los 3 iniciales
 - Solo parás cuando: (a) un camino da ✅, o (b) agotaste todas las hipótesis posibles
 - Cuando pares, reportás: qué intentaste, por qué falló cada uno, y cuál ganó (o qué quedó sin resolver)
+
+---
+
+## Regla — Límite de entorno
+
+Claude Code NO puede correr scripts de Playwright ni navegar a LinkedIn.
+El entorno bloquea cdn.playwright.dev y linkedin.com.
+
+Flujo correcto para cualquier test:
+1. Claude Code crea el script y pushea
+2. El usuario corre en su terminal Windows: `git pull` → `node tests\script.js`
+3. El usuario pega el log en Claude.ai
+4. Claude.ai analiza y da el fix
+5. Claude Code integra el fix en invitar-agent.js
+
+**NUNCA** intentar correr `node tests/*.js` desde Claude Code.
+**NUNCA** esperar correr Playwright de forma autónoma.
