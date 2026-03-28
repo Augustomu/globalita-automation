@@ -134,6 +134,21 @@ button:hover{background:var(--bg);border-color:#c8b8a8;color:var(--text)}
 .err-blk-lbl{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#6b7280;margin-bottom:5px}
 .err-kv{padding:2px 0}.err-k{color:#93c5fd}.err-v{color:#d1fae5}.err-v.red{color:#fca5a5}.err-v.amber{color:#fde68a}.err-v.gray{color:#6b7280}
 .err-stack{background:#111;border-radius:6px;padding:9px 11px;font-size:11px;color:#6b7280;white-space:pre-wrap;word-break:break-all}
+/* ── Log popup ── */
+.log-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:300;align-items:center;justify-content:center}
+.log-overlay.open{display:flex}
+.log-box{background:#1a1814;border-radius:12px;width:640px;max-width:94vw;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.55)}
+.log-box-hd{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #2e2a24;flex-shrink:0}
+.log-box-title{font-size:13px;font-weight:600;color:#f0ece6;display:flex;align-items:center;gap:7px}
+.log-box-badge{font-size:10px;padding:2px 7px;border-radius:4px;background:#15803d;color:#fff;font-weight:700}
+.log-box-x{width:26px;height:26px;border-radius:6px;border:1px solid #3a3630;background:transparent;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#8a8278}
+.log-box-x:hover{background:#2e2a24}
+.log-box-body{padding:14px 18px;font-family:'Courier New',monospace;font-size:11px;line-height:1.7;color:#d1d5db;overflow-y:auto;flex:1;white-space:pre-wrap;word-break:break-all}
+.log-line{padding:1px 0;border-bottom:1px solid #222}.log-line:last-child{border-bottom:none}
+.log-empty{color:#6b7280;font-style:italic}
+.log-auto{display:flex;align-items:center;gap:6px;padding-top:4px}
+.log-auto label{font-size:11px;color:#8a8278;cursor:pointer;display:flex;align-items:center;gap:4px}
+.log-auto input{accent-color:#15803d}
 </style>
 </head>
 <body>
@@ -158,6 +173,20 @@ button:hover{background:var(--bg);border-color:#c8b8a8;color:var(--text)}
       <button class="err-box-x" onclick="closeErr()">×</button>
     </div>
     <div class="err-box-body" id="err-body"></div>
+  </div>
+</div>
+
+<!-- Log popup -->
+<div class="log-overlay" id="log-overlay" onclick="if(event.target===this)closeLog()">
+  <div class="log-box">
+    <div class="log-box-hd">
+      <div class="log-box-title">📋 Log: <span id="log-cuenta-name"></span><span class="log-box-badge" id="log-badge">0 líneas</span></div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="log-auto"><label><input type="checkbox" id="log-autorefresh" checked> Auto-refresh</label></div>
+        <button class="log-box-x" onclick="closeLog()">×</button>
+      </div>
+    </div>
+    <div class="log-box-body" id="log-body"><span class="log-empty">Cargando...</span></div>
   </div>
 </div>
 
@@ -252,6 +281,8 @@ function buildInvCard(flow, s) {
   tagBtns += '<button class="tag-popup tp-gray" data-pop="inv-sinemail-'+flow.id+'">S/N Email ↗</button>';
   tagBtns += '<button class="tag-popup tp-red"  data-pop="inv-fallidos-'+flow.id+'">Fallidos'+(nFall?" ("+nFall+")":"")+" ↗</button>";
   tagBtns += '<button class="tag-popup tp-gray" data-pop="inv-kw-'+flow.id+'">Keywords ↗</button>';
+  var cuentaNombre = flow.id.replace("invitar-","");
+  tagBtns += '<button class="tag-popup tp-gray" onclick="openLog(\''+cuentaNombre+'\')">📋 Ver log</button>';
   var grupos = flow.grupos;
   var tbl = '<div class="stats-box" style="margin-top:10px"><table class="stats-table"><thead><tr><th style="width:34px"></th>';
   grupos.forEach(function(g){ tbl += '<th class="bl">'+g.toUpperCase()+'</th>'; });
@@ -855,6 +886,54 @@ async function pollAgentStatus() {
 
 setInterval(pollAgentStatus, 3000); pollAgentStatus();
 render(); setInterval(render, 2500);
+
+// ── Log popup ─────────────────────────────────────────────────
+var _logCuenta = null;
+var _logInterval = null;
+
+function openLog(cuenta) {
+  _logCuenta = cuenta;
+  document.getElementById("log-cuenta-name").textContent = cuenta.charAt(0).toUpperCase() + cuenta.slice(1);
+  document.getElementById("log-body").innerHTML = '<span class="log-empty">Cargando...</span>';
+  document.getElementById("log-badge").textContent = "...";
+  document.getElementById("log-autorefresh").checked = true;
+  document.getElementById("log-overlay").classList.add("open");
+  fetchLog();
+  _logInterval = setInterval(function() {
+    if (document.getElementById("log-autorefresh").checked) fetchLog();
+  }, 3000);
+}
+
+function closeLog() {
+  document.getElementById("log-overlay").classList.remove("open");
+  _logCuenta = null;
+  if (_logInterval) { clearInterval(_logInterval); _logInterval = null; }
+}
+
+async function fetchLog() {
+  if (!_logCuenta) return;
+  try {
+    var res = await fetch("/api/logs/" + _logCuenta);
+    var data = await res.json();
+    var body = document.getElementById("log-body");
+    document.getElementById("log-badge").textContent = data.lines.length + " líneas";
+    if (data.error && !data.lines.length) {
+      body.innerHTML = '<span class="log-empty">' + esc(data.error) + '</span>';
+      return;
+    }
+    if (!data.lines.length) {
+      body.innerHTML = '<span class="log-empty">Sin líneas de log para ' + esc(_logCuenta) + '</span>';
+      return;
+    }
+    var wasAtBottom = body.scrollTop + body.clientHeight >= body.scrollHeight - 30;
+    body.innerHTML = data.lines.map(function(l) {
+      return '<div class="log-line">' + esc(l) + '</div>';
+    }).join("");
+    if (wasAtBottom) body.scrollTop = body.scrollHeight;
+  } catch(e) {
+    document.getElementById("log-body").innerHTML = '<span class="log-empty">Error al cargar log: ' + esc(e.message) + '</span>';
+  }
+}
 </script>
 </body>
 </html>

@@ -137,6 +137,25 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // GET /api/logs/:cuenta — últimas 100 líneas del log filtradas por cuenta
+  var logsMatch = url.pathname.match(/^\/api\/logs\/(alejandro|david|francisco)$/);
+  if (req.method === "GET" && logsMatch) {
+    var cuenta = logsMatch[1];
+    var logPath = path.join(__dirname, "linkedin-agent", "invitar-agent.log");
+    try {
+      var raw = fs.readFileSync(logPath, "utf8");
+      var lines = raw.split("\n").filter(function(l) {
+        return l.toLowerCase().indexOf(cuenta) !== -1;
+      });
+      var last100 = lines.slice(-100);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ cuenta: cuenta, lines: last100 }));
+    } catch (e) {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ cuenta: cuenta, lines: [], error: "Log no encontrado" }));
+    }
+  }
+
   if (req.method === "GET" && url.pathname === "/api/agent-status") {
     const running = agentProcess !== null && !agentProcess.killed;
     res.writeHead(200, { "Content-Type": "application/json" });
