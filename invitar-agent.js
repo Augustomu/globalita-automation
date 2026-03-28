@@ -325,7 +325,8 @@ async function procesarPerfilesConScroll(page, cuenta, cuota, grupo, quotaState)
     // Filtrar solo los nuevos — no procesados en rondas anteriores
     const nuevos = [];
     for (const item of todosItems) {
-      const href = await item.locator('a[href*="/sales/lead/"], a[href*="/sales/people/"]').first().getAttribute('href').catch(() => '');
+      const href = await item.locator('a[href*="/sales/lead/"], a[href*="/sales/people/"]').first().getAttribute('href', { timeout: 5000 }).catch(() => '');
+      if (!href) { log(cuenta, `[diag] skip — getAttribute timeout`); continue; }
       const key  = normalizarUrl(href);
       if (key && !idsVistos.has(key)) {
         idsVistos.add(key);
@@ -372,7 +373,7 @@ async function procesarPerfilesConScroll(page, cuenta, cuota, grupo, quotaState)
           }
         } else if (resultado === 'error' || resultado === 'no-connect-option') {
           // D3: marcar como error estructural — C1 no reintentará
-          const hrefErr = await profileEl.locator('a[href*="/sales/lead/"], a[href*="/sales/people/"]').first().getAttribute('href').catch(() => '');
+          const hrefErr = await profileEl.locator('a[href*="/sales/lead/"], a[href*="/sales/people/"]').first().getAttribute('href', { timeout: 5000 }).catch(() => '');
           const keyErr  = normalizarUrl(hrefErr);
           if (keyErr) idsError.add(keyErr);
         }
@@ -400,22 +401,23 @@ async function procesarPerfilesConScroll(page, cuenta, cuota, grupo, quotaState)
 // ═══════════════════════════════════════════════════════════════
 
 async function verificarEstadoPerfil(profileEl) {
-  const texto = await profileEl.innerText().catch(() => '');
+  const texto = await profileEl.innerText({ timeout: 5000 }).catch(() => '');
+  if (!texto) return 'candidato'; // elemento desaparecido — tratar como candidato
   const t     = texto.toLowerCase();
   const indicaSaved   = t.includes('saved')   || t.includes('guardado') || t.includes('salvo');
   const indicaPending = t.includes('pending') || t.includes('pendiente')|| t.includes('pendente');
   if (!indicaSaved && !indicaPending) return 'candidato';
   if (indicaSaved) {
     const btn = profileEl.locator('button:has-text("Saved")').or(profileEl.locator('button:has-text("Guardado")')).or(profileEl.locator('button:has-text("Salvo")'));
-    if (await btn.count() > 0) return 'skip-saved';
+    if (await btn.count().catch(() => 0) > 0) return 'skip-saved';
     const svg = profileEl.locator('button svg use[href*="bookmark"], button svg use[href*="check"]');
-    if (await svg.count() > 0) return 'skip-saved';
+    if (await svg.count().catch(() => 0) > 0) return 'skip-saved';
   }
   if (indicaPending) {
     const btn = profileEl.locator('button:has-text("Pending")').or(profileEl.locator('button:has-text("Pendiente")')).or(profileEl.locator('button:has-text("Pendente")'));
-    if (await btn.count() > 0) return 'skip-pending';
+    if (await btn.count().catch(() => 0) > 0) return 'skip-pending';
     const svg = profileEl.locator('button svg use[href*="clock"], button svg use[href*="pending"]');
-    if (await svg.count() > 0) return 'skip-pending';
+    if (await svg.count().catch(() => 0) > 0) return 'skip-pending';
   }
   return 'candidato';
 }
@@ -440,8 +442,8 @@ async function verificarPendingPostEnvio(page) {
 // ═══════════════════════════════════════════════════════════════
 
 async function enviarInvitacion(page, profileEl, cuenta) {
-  const nombre        = await profileEl.locator('[data-anonymize="person-name"]').first().innerText().catch(() => 'desconocido');
-  const textoCompleto = await profileEl.innerText().catch(() => '');
+  const nombre        = await profileEl.locator('[data-anonymize="person-name"]').first().innerText({ timeout: 5000 }).catch(() => 'desconocido');
+  const textoCompleto = await profileEl.innerText({ timeout: 5000 }).catch(() => '');
   const mensaje       = getMensaje(cuenta, textoCompleto);
 
   await profileEl.scrollIntoViewIfNeeded().catch(() => {});
@@ -664,7 +666,7 @@ async function enviarInvitacion(page, profileEl, cuenta) {
     // Hay que ir al perfil de linkedin.com/in/ y conectar desde ahí (F6).
     // F6 usa M9 (Conectar directo y 100-500 + waitForSelector) — confirmado funcionando.
     const profileUrl = await profileEl.locator('a[href*="/sales/lead/"], a[href*="/sales/people/"]')
-      .first().getAttribute('href').catch(() => 'unknown');
+      .first().getAttribute('href', { timeout: 5000 }).catch(() => 'unknown');
     const profileUrlNorm = normalizarUrl(profileUrl);
     // BUG-6 FIX: F4 no conoce el grupo — NO llamar logPendingEmail aquí.
     // F2 recibe el resultado requires-email y llama logPendingEmail con el grupo correcto.
@@ -734,7 +736,7 @@ async function revisarPaginaCompleta(page, cuenta, cuotaRestante, grupo, quotaSt
   for (const item of todosItems) {
     if (enviados >= cuotaRestante || !quedanInvitaciones(quotaState, cuenta)) break;
 
-    const href = await item.locator('a[href*="/sales/lead/"], a[href*="/sales/people/"]').first().getAttribute('href').catch(() => '');
+    const href = await item.locator('a[href*="/sales/lead/"], a[href*="/sales/people/"]').first().getAttribute('href', { timeout: 5000 }).catch(() => '');
     const key  = normalizarUrl(href);
     if (!key || idsYaProcesados.has(key)) continue;
     if (idsError.has(key)) continue; // D3: skip perfiles con error estructural
@@ -1231,7 +1233,11 @@ async function irSiguientePagina(page, cuenta) {
   await delay(2000);
   await cerrarBanners(page);
 
-  const paginaDespues = new URL(page.url()).searchParams.get('page') || '?';
+  const paginaDespues = new URL(page.url()).searchParams.get('page') || '1';
+  if (paginaDespues === paginaAntes) {
+    log(cuenta, `F5 ✗ Página no avanzó (sigue en ${paginaAntes}) — fin de lista`);
+    return { ok: false };
+  }
   log(cuenta, `F5 ✓ Página ${paginaAntes} → ${paginaDespues}`);
   return { ok: true, pagina: parseInt(paginaDespues) || 0 };
 }
