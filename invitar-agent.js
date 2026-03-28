@@ -1324,8 +1324,11 @@ async function runAccount(cuenta, quotaState) {
       let pagina          = 1;
 
       // Loop de páginas — F2 procesa con scroll progresivo (Camino 1)
-      while (enviadosEnLista < cuota && quedanInvitaciones(quotaState, cuenta)) {
-        const resF2 = await procesarPerfilesConScroll(page, cuenta, cuota - enviadosEnLista, grupo, quotaState);
+      while (true) {
+        // Si ya no quedan invitaciones para enviar, seguir paginando pero sin procesar
+        const puedeEnviar = enviadosEnLista < cuota && quedanInvitaciones(quotaState, cuenta);
+
+        const resF2 = await procesarPerfilesConScroll(page, cuenta, puedeEnviar ? cuota - enviadosEnLista : 0, grupo, quotaState);
         enviadosEnLista += resF2.enviados;
 
         // Acumular pendientes de email — F1: dedup cross-planItem por profileUrl
@@ -1337,18 +1340,18 @@ async function runAccount(cuenta, quotaState) {
         }
 
         // C1: revisión pre-página si la página se agotó
-        if (resF2.agotada && quedanInvitaciones(quotaState, cuenta)) {
+        if (resF2.agotada && puedeEnviar) {
           const resC1 = await revisarPaginaCompleta(page, cuenta, cuota - enviadosEnLista, grupo, quotaState, resF2.idsVistos, resF2.idsError);
           enviadosEnLista += resC1.enviados;
         }
 
-        // F5: siguiente página si corresponde
-        if (resF2.agotada && enviadosEnLista < cuota && quedanInvitaciones(quotaState, cuenta)) {
+        // F5: siempre intentar siguiente página hasta que no haya más
+        if (resF2.agotada) {
           const resF5 = await irSiguientePagina(page, cuenta);
-          if (!resF5.ok) break;
+          if (!resF5.ok) break; // fin real de lista
           pagina++;
         } else {
-          break; // cuota alcanzada o sin más páginas
+          break;
         }
       }
 
