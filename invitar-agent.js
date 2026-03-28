@@ -503,7 +503,7 @@ async function enviarInvitacion(page, profileEl, cuenta) {
       const r = btn.getBoundingClientRect();
       if (r.width === 0) return null;
       return { x: r.x, y: r.y, w: r.width, h: r.height, aria: btn.getAttribute('aria-label') };
-    });
+    }).catch(() => null);
 
     if (!moreBtnBbox) {
       // A9: diagnóstico completo del card si no se encuentra el botón
@@ -597,7 +597,7 @@ async function enviarInvitacion(page, profileEl, cuenta) {
         if (!btn) return null;
         const r = btn.getBoundingClientRect();
         return r.width > 0 ? { x: r.x, y: r.y, w: r.width, h: r.height } : null;
-      });
+      }).catch(() => null);
       if (moreBtnBbox2) {
         await page.mouse.move(moreBtnBbox2.x + moreBtnBbox2.w / 2, moreBtnBbox2.y + moreBtnBbox2.h / 2);
         await delay(400);
@@ -1205,29 +1205,33 @@ async function irSiguientePagina(page, cuenta) {
   const nextBtn = page.locator('button[aria-label="Next"]')
     .or(page.locator('button[aria-label="Siguiente"]'))
     .or(page.locator('button[aria-label="Próxima"]'))
-    .or(page.locator('button[aria-label="Próximo"]'));
+    .or(page.locator('button[aria-label="Próximo"]'))
+    .first();
 
-  const hasNext  = await nextBtn.isVisible({ timeout: 3000 }).catch(() => false);
-  if (!hasNext)  return { ok: false };
+  // R1 del KB: usar waitForSelector en lugar de isVisible
+  const nextEl = await page.waitForSelector(
+    'button[aria-label="Next"], button[aria-label="Siguiente"], button[aria-label="Próxima"], button[aria-label="Próximo"]',
+    { timeout: 5000 }
+  ).catch(() => null);
+  if (!nextEl) return { ok: false };
 
-  const disabled = await nextBtn.first().isDisabled().catch(() => true);
-  if (disabled)  return { ok: false };
+  const disabled = await nextBtn.isDisabled().catch(() => true);
+  if (disabled) return { ok: false };
 
-  const paginaAntes = await page.evaluate(() => {
-    // E3: URL ?page= param — ÚNICO SELECTOR CONFIRMADO en producción (test-bug4 25 Mar 2026)
-    // Todos los selectores DOM (aria-current, data-test-pagination, artdeco) retornan null en Sales Nav
-    const pageParam = new URL(window.location.href).searchParams.get('page');
-    return pageParam || '1'; // si no hay param, estamos en página 1 (default)
-  }).catch(() => '?');
-  await nextBtn.first().click();
-  await page.waitForSelector('ol li:has(a[href*="/sales/lead/"]), ol li:has(a[href*="/sales/people/"])', { timeout: 15000 }).catch(() => {});
-  await delay(800);
+  // Leer página actual via URL (único método confirmado en KB)
+  const paginaAntes = new URL(page.url()).searchParams.get('page') || '1';
+
+  await nextBtn.click();
+
+  // R9 del KB: NUNCA networkidle en LinkedIn — usar waitForSelector en un perfil
+  await page.waitForSelector(
+    'ol li:has(a[href*="/sales/lead/"]), ol li:has(a[href*="/sales/people/"]), ul li:has(a[href*="/sales/lead/"]), ul li:has(a[href*="/sales/people/"])',
+    { timeout: 15000 }
+  ).catch(() => {});
+  await delay(2000);
   await cerrarBanners(page);
-  const paginaDespues = await page.evaluate(() => {
-    const pageParam = new URL(window.location.href).searchParams.get('page');
-    return pageParam || '?'; // después del click siempre debe tener ?page=N
-  }).catch(() => '?');
 
+  const paginaDespues = new URL(page.url()).searchParams.get('page') || '?';
   log(cuenta, `F5 ✓ Página ${paginaAntes} → ${paginaDespues}`);
   return { ok: true, pagina: parseInt(paginaDespues) || 0 };
 }
