@@ -1204,40 +1204,49 @@ async function enviarConEmail(page, profileSalesNavUrl, nombre, cuenta) {
 // ═══════════════════════════════════════════════════════════════
 
 async function irSiguientePagina(page, cuenta) {
-  const nextBtn = page.locator('button[aria-label="Next"]')
-    .or(page.locator('button[aria-label="Siguiente"]'))
-    .or(page.locator('button[aria-label="Próxima"]'))
-    .or(page.locator('button[aria-label="Próximo"]'))
-    .first();
-
-  // R1 del KB: usar waitForSelector en lugar de isVisible
   const nextEl = await page.waitForSelector(
     'button[aria-label="Next"], button[aria-label="Siguiente"], button[aria-label="Próxima"], button[aria-label="Próximo"]',
     { timeout: 5000 }
   ).catch(() => null);
   if (!nextEl) return { ok: false };
 
+  const nextBtn = page.locator('button[aria-label="Next"]')
+    .or(page.locator('button[aria-label="Siguiente"]'))
+    .or(page.locator('button[aria-label="Próxima"]'))
+    .or(page.locator('button[aria-label="Próximo"]'))
+    .first();
+
   const disabled = await nextBtn.isDisabled().catch(() => true);
   if (disabled) return { ok: false };
 
-  // Leer página actual via URL (único método confirmado en KB)
+  const urlAntes = page.url();
   const paginaAntes = new URL(page.url()).searchParams.get('page') || '1';
 
   await nextBtn.click();
 
-  // R9 del KB: NUNCA networkidle en LinkedIn — usar waitForSelector en un perfil
+  // Esperar que la URL cambie — no que aparezcan perfiles (pueden ser del DOM anterior)
+  try {
+    await page.waitForFunction(
+      (urlPrev) => window.location.href !== urlPrev,
+      urlAntes,
+      { timeout: 10000 }
+    );
+  } catch {
+    // URL no cambió — fin real de lista
+    log(cuenta, `F5 ✗ URL no cambió tras click — fin de lista`);
+    return { ok: false };
+  }
+
+  await delay(2000);
+  await cerrarBanners(page);
+
+  // Esperar que los nuevos perfiles carguen
   await page.waitForSelector(
     'ol li:has(a[href*="/sales/lead/"]), ol li:has(a[href*="/sales/people/"]), ul li:has(a[href*="/sales/lead/"]), ul li:has(a[href*="/sales/people/"])',
     { timeout: 15000 }
   ).catch(() => {});
-  await delay(2000);
-  await cerrarBanners(page);
 
-  const paginaDespues = new URL(page.url()).searchParams.get('page') || '1';
-  if (paginaDespues === paginaAntes) {
-    log(cuenta, `F5 ✗ Página no avanzó (sigue en ${paginaAntes}) — fin de lista`);
-    return { ok: false };
-  }
+  const paginaDespues = new URL(page.url()).searchParams.get('page') || '?';
   log(cuenta, `F5 ✓ Página ${paginaAntes} → ${paginaDespues}`);
   return { ok: true, pagina: parseInt(paginaDespues) || 0 };
 }
