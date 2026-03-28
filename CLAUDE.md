@@ -263,3 +263,23 @@ ps aux | grep node               # Linux/Mac
 - Sub Gerente es un demo en Lovable (React/TS/shadcn/Recharts/localStorage)
 - FABRIPT es la entidad legal que propone partnerships con cámaras industriales
 - Augusto habla ES/EN/PT — los scripts respetan esto en los mensajes
+
+---
+
+## Reglas de Git
+
+**Después de cada git push, siempre correr:**
+```bash
+git pull
+```
+para asegurar que la máquina local está sincronizada con el repo.
+
+**Flujo completo obligatorio para cualquier cambio de archivo:**
+1. Editar archivo
+2. `git add .`
+3. `git commit -m "mensaje"`
+4. `git push`
+5. `git pull` ← nunca omitir este paso
+
+**Nunca asumir que un archivo existe en la máquina local** solo porque está en el repo.
+Si el usuario reporta "Cannot find module", primero correr `git pull` antes de cualquier otra acción.
