@@ -1,8 +1,9 @@
 // ================================================================
 // test-f1-camino-a.js — F1: Navegar por Saved Searches panel
 //
-// CAMINO A (96%): goto sales/search/people → click "Saved searches" →
-//   click "Gerente, RJ MG ES BH" → waitForSelector(SELECTOR_PERFILES)
+// Fix: delay(3000) después del click en "Búsquedas guardadas" para
+// que el panel renderice, luego buscar botón "Ver" asociado a
+// "Gerente, RJ MG ES BH".
 //
 // Cuenta: francisco | NO envía invitaciones.
 //
@@ -10,20 +11,37 @@
 //   node tests/test-f1-camino-a.js
 // ================================================================
 
-const { launchBrowser, delay, log, cerrarBanners, SELECTOR_PERFILES } = require('./test-helpers');
+const { chromium } = require('playwright');
+const path = require('path');
 
+const SESSION_DIR = path.resolve(__dirname, '..', 'francisco agente invitaciones');
 const SEARCH_NAME = 'Gerente, RJ MG ES BH';
+const SELECTOR_PERFILES =
+  'ol li:has(a[href*="/sales/lead/"]), ol li:has(a[href*="/sales/people/"]), ' +
+  'ul li:has(a[href*="/sales/lead/"]), ul li:has(a[href*="/sales/people/"])';
+
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+function log(msg)  { console.log(`[${new Date().toISOString().slice(11,23)}] ${msg}`); }
+
+async function cerrarBanners(page) {
+  await page.evaluate(() => {
+    const sels = ['[data-test-global-alert-dismiss]','[aria-label="Dismiss"]','[aria-label="Cerrar"]','[aria-label="Fechar"]','.artdeco-global-alert__dismiss','.global-alert-banner__dismiss'];
+    sels.forEach(s => document.querySelectorAll(s).forEach(b => { try { b.click(); } catch(_){} }));
+  }).catch(() => {});
+}
 
 (async () => {
-  log('CAMINO A — F1 Saved Searches panel — inicio');
+  log('CAMINO A v2 — F1 Saved Searches + botón Ver — inicio');
+  log(`Sesión: ${SESSION_DIR}`);
   log(`Búsqueda: "${SEARCH_NAME}"`);
 
   let context;
   try {
-    const res = await launchBrowser('francisco');
-    context = res.context;
-    const page = res.page;
-    log(`Modo: ${res.mode}`);
+    context = await chromium.launchPersistentContext(SESSION_DIR, {
+      headless: false,
+      viewport: { width: 1280, height: 860 },
+    });
+    const page = await context.newPage();
     const t0 = Date.now();
 
     // 1. Navegar a la página de búsqueda de personas
@@ -36,24 +54,23 @@ const SEARCH_NAME = 'Gerente, RJ MG ES BH';
     log(`Página cargada: ${page.url()}`);
     log(`Título: ${await page.title()}`);
 
-    // 2. Buscar y clickear botón "Saved searches" / "Búsquedas guardadas" / "Pesquisas salvas"
-    log('Paso 2: Buscando botón Saved Searches...');
+    // 2. Buscar y clickear botón "Búsquedas guardadas"
+    log('Paso 2: Buscando botón "Búsquedas guardadas"...');
     const savedBtn = await page.waitForSelector(
       'button:has-text("Saved searches"), button:has-text("Búsquedas guardadas"), button:has-text("Pesquisas salvas")',
       { timeout: 10000 }
     ).catch(() => null);
 
     if (!savedBtn) {
-      // Auditoría: loguear todos los botones visibles
       const botones = await page.evaluate(() => {
         return Array.from(document.querySelectorAll('button')).slice(0, 30).map(b => ({
           text: b.textContent.trim().substring(0, 80),
           visible: b.offsetParent !== null
         })).filter(b => b.visible && b.text);
       });
-      log('Botones visibles encontrados:');
+      log('Botones visibles:');
       botones.forEach((b, i) => log(`  [${i}] "${b.text}"`));
-      log(`CAMINO A: ❌ | botón Saved Searches no encontrado`);
+      log('CAMINO A: ❌ | botón Búsquedas guardadas no encontrado');
       log(`URL final: ${page.url()}`);
       log('FIN');
       return;
@@ -61,37 +78,135 @@ const SEARCH_NAME = 'Gerente, RJ MG ES BH';
 
     log('Botón encontrado, haciendo click...');
     await savedBtn.click();
-    await delay(1500);
+    await delay(3000); // ← crítico: el panel necesita tiempo para renderizar
 
-    // 3. Buscar el link/elemento con el nombre exacto de la búsqueda
-    log(`Paso 3: Buscando "${SEARCH_NAME}" en el panel...`);
-    const searchLink = await page.waitForSelector(
-      `a:has-text("${SEARCH_NAME}"), span:has-text("${SEARCH_NAME}"), div:has-text("${SEARCH_NAME}")`,
-      { timeout: 8000 }
-    ).catch(() => null);
+    // 3. Auditoría completa del panel
+    log('Paso 3: Auditoría completa del panel...');
+    const panelAudit = await page.evaluate(() => {
+      const results = [];
+      // Todos los elementos visibles — botones, links, spans, divs
+      const all = document.querySelectorAll('button, a, span, div, li, td');
+      for (const el of all) {
+        if (!el.offsetParent) continue;
+        const text = el.textContent.trim();
+        if (!text || text.length > 200) continue;
+        // Filtrar por relevancia: contiene "erente", "onsultor", "Ver", "View", "saved"
+        const tl = text.toLowerCase();
+        if (tl.includes('erente') || tl.includes('onsultor') || tl.includes('ver') ||
+            tl.includes('view') || tl.includes('saved') || tl.includes('guardad') ||
+            tl.includes('angel') || tl.includes('seed') || tl.includes('family')) {
+          results.push({
+            tag: el.tagName,
+            text: text.substring(0, 150),
+            role: el.getAttribute('role') || '',
+            ariaLabel: el.getAttribute('aria-label') || '',
+            className: el.className ? String(el.className).substring(0, 80) : '',
+            parentText: el.parentElement ? el.parentElement.textContent.trim().substring(0, 150) : ''
+          });
+        }
+      }
+      return results;
+    });
+    log(`Panel: ${panelAudit.length} elementos relevantes`);
+    panelAudit.forEach((el, i) => {
+      log(`  [${i}] <${el.tag}> "${el.text}" role="${el.role}" aria="${el.ariaLabel}"`);
+      if (el.parentText !== el.text) log(`        parent: "${el.parentText}"`);
+    });
 
-    if (!searchLink) {
-      // Auditoría: loguear textos visibles en el panel
-      const textos = await page.evaluate(() => {
-        return Array.from(document.querySelectorAll('a, span, div')).slice(0, 50).map(el => ({
-          tag: el.tagName,
-          text: el.textContent.trim().substring(0, 100),
-          visible: el.offsetParent !== null
-        })).filter(e => e.visible && e.text && e.text.includes('erente'));
+    // 4. Estrategia A: buscar botón "Ver" con contexto "Gerente"
+    log('Paso 4a: Buscando botón "Ver" con contexto "Gerente"...');
+    let clicked = false;
+
+    // Intentar getByRole con filter
+    try {
+      const verBtns = page.getByRole('button', { name: /^Ver$/i });
+      const count = await verBtns.count();
+      log(`Botones "Ver" encontrados: ${count}`);
+
+      for (let i = 0; i < count; i++) {
+        const btn = verBtns.nth(i);
+        // Revisar si el contexto padre contiene "Gerente"
+        const parentText = await btn.evaluate(el => {
+          // Subir hasta 5 niveles buscando el texto de contexto
+          let node = el.parentElement;
+          for (let j = 0; j < 5 && node; j++) {
+            const t = node.textContent || '';
+            if (t.includes('Gerente')) return t.trim().substring(0, 150);
+            node = node.parentElement;
+          }
+          return '';
+        });
+        log(`  Ver [${i}] → parent: "${parentText}"`);
+        if (parentText.includes('Gerente')) {
+          log(`  ✓ Click en Ver [${i}] (contexto Gerente)`);
+          await btn.click();
+          clicked = true;
+          break;
+        }
+      }
+    } catch (e) {
+      log(`  getByRole falló: ${e.message}`);
+    }
+
+    // 4b: Si no hay botón "Ver", buscar todos los buttons "Ver"/"View" y loguear padres
+    if (!clicked) {
+      log('Paso 4b: Buscando buttons "Ver"/"View" genéricos...');
+      const verButtons = await page.evaluate(() => {
+        return Array.from(document.querySelectorAll('button, a'))
+          .filter(el => el.offsetParent !== null)
+          .filter(el => {
+            const t = el.textContent.trim().toLowerCase();
+            return t === 'ver' || t === 'view';
+          })
+          .map(el => ({
+            text: el.textContent.trim(),
+            parentText: el.parentElement ? el.parentElement.textContent.trim().substring(0, 150) : '',
+            grandparentText: el.parentElement && el.parentElement.parentElement
+              ? el.parentElement.parentElement.textContent.trim().substring(0, 200) : ''
+          }));
       });
-      log('Elementos con "erente" visibles:');
-      textos.forEach((t, i) => log(`  [${i}] <${t.tag}> "${t.text}"`));
-      log(`CAMINO A: ❌ | "${SEARCH_NAME}" no encontrado en panel`);
+      log(`Buttons Ver/View: ${verButtons.length}`);
+      verButtons.forEach((v, i) => {
+        log(`  [${i}] "${v.text}" parent="${v.parentText}"`);
+        log(`         grandparent="${v.grandparentText}"`);
+      });
+
+      // Click en el que tenga "Gerente" en el contexto
+      for (let i = 0; i < verButtons.length && !clicked; i++) {
+        if (verButtons[i].parentText.includes('Gerente') || verButtons[i].grandparentText.includes('Gerente')) {
+          log(`  ✓ Click en Ver/View [${i}]`);
+          const allVer = page.locator('button:has-text("Ver"), a:has-text("Ver"), button:has-text("View"), a:has-text("View")');
+          await allVer.nth(i).click();
+          clicked = true;
+        }
+      }
+    }
+
+    // 4c: fallback — click directo en cualquier elemento que contenga el nombre exacto
+    if (!clicked) {
+      log('Paso 4c: Fallback — click directo en elemento con nombre exacto...');
+      const directEl = await page.waitForSelector(
+        `a:has-text("${SEARCH_NAME}"), span:has-text("${SEARCH_NAME}"), button:has-text("${SEARCH_NAME}"), div:has-text("${SEARCH_NAME}")`,
+        { timeout: 5000 }
+      ).catch(() => null);
+
+      if (directEl) {
+        log('Encontrado elemento con nombre exacto, haciendo click...');
+        await directEl.click();
+        clicked = true;
+      }
+    }
+
+    if (!clicked) {
+      const ms = Date.now() - t0;
+      log(`CAMINO A: ❌ | ${ms}ms | no se pudo hacer click en la búsqueda`);
       log(`URL final: ${page.url()}`);
       log('FIN');
       return;
     }
 
-    log(`Encontrado, haciendo click en "${SEARCH_NAME}"...`);
-    await searchLink.click();
-
-    // 4. Esperar perfiles
-    log('Paso 4: Esperando SELECTOR_PERFILES (timeout: 15s)...');
+    // 5. Esperar perfiles
+    log('Paso 5: Esperando SELECTOR_PERFILES (timeout: 15s)...');
     const perfil = await page.waitForSelector(SELECTOR_PERFILES, { timeout: 15000 }).catch(() => null);
     const ms = Date.now() - t0;
 
