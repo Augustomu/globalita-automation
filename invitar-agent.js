@@ -1223,6 +1223,7 @@ async function irSiguientePagina(page, cuenta) {
   const paginaAntes = new URL(page.url()).searchParams.get('page') || '1';
 
   await nextBtn.click();
+  log(cuenta, `F5 [diag] URL antes: ${urlAntes}`);
 
   // Esperar que la URL cambie — no que aparezcan perfiles (pueden ser del DOM anterior)
   try {
@@ -1236,6 +1237,8 @@ async function irSiguientePagina(page, cuenta) {
     log(cuenta, `F5 ✗ URL no cambió tras click — fin de lista`);
     return { ok: false };
   }
+
+  log(cuenta, `F5 [diag] URL después: ${page.url()}`);
 
   await delay(2000);
   await cerrarBanners(page);
