@@ -229,45 +229,47 @@ function logPendingEmail(cuenta, nombre, profileUrl, grupo = null) {
 // ═══════════════════════════════════════════════════════════════
 // F1 — abrirBusquedaGuardada
 // ═══════════════════════════════════════════════════════════════
+// Navega a la página de búsqueda de personas, abre el panel de
+// búsquedas guardadas y hace click en el nombre exacto de la lista.
+// Ya no depende de savedSearchId (LinkedIn los cambia).
 
 async function abrirBusquedaGuardada(page, busqueda, cuenta) {
   log(cuenta, `F1 Abriendo: "${busqueda.nombre}"`);
   try {
-    await page.goto(busqueda.url, { waitUntil: 'domcontentloaded', timeout: 15000 });
-    await page.waitForSelector('ol li:has(a[href*="/sales/lead/"]), ol li:has(a[href*="/sales/people/"])', { timeout: 12000 }).catch(() => {});
+    // 1. Navegar a la página base de búsqueda de personas
+    await page.goto('https://www.linkedin.com/sales/search/people', {
+      waitUntil: 'domcontentloaded', timeout: 15000
+    });
+    await delay(2000);
+    await cerrarBanners(page);
+
+    // 2. Abrir el panel de búsquedas guardadas
+    const savedBtn = page.locator('button:has-text("Saved searches"), button:has-text("Búsquedas guardadas")').first();
+    if (!await savedBtn.isVisible({ timeout: 8000 }).catch(() => false)) {
+      log(cuenta, `F1 ✗ Botón de búsquedas guardadas no visible`);
+      return { ok: false, error: 'Botón de búsquedas guardadas no encontrado' };
+    }
+    await savedBtn.click();
+    await delay(1500);
+
+    // 3. Buscar el link con el nombre exacto de la búsqueda guardada
+    const nombreExacto = busqueda.nombre;
+    const linkBusqueda = page.locator(`a`).filter({ hasText: nombreExacto }).first();
+    if (!await linkBusqueda.isVisible({ timeout: 8000 }).catch(() => false)) {
+      log(cuenta, `F1 ✗ Búsqueda "${nombreExacto}" no encontrada en el panel`);
+      return { ok: false, error: `Búsqueda "${nombreExacto}" no encontrada en el panel` };
+    }
+    await linkBusqueda.click();
+
+    // 4. Esperar a que carguen los resultados
+    await page.waitForSelector(SELECTOR_PERFILES, { timeout: 12000 }).catch(() => {});
     await delay(800);
     await cerrarBanners(page);
-    if (!page.url().includes(extraerSavedSearchId(busqueda.url)))
-      return await fallbackPorNombre(page, busqueda, cuenta);
+
     log(cuenta, `F1 ✓`);
     return { ok: true };
   } catch (err) {
-    return await fallbackPorNombre(page, busqueda, cuenta);
-  }
-}
-
-async function fallbackPorNombre(page, busqueda, cuenta) {
-  try {
-    await page.goto('https://www.linkedin.com/sales/home', { waitUntil: 'domcontentloaded', timeout: 15000 });
-    await delay(1500);
-    await cerrarBanners(page);
-    const savedId  = extraerSavedSearchId(busqueda.url);
-    const linkById = page.locator(`a[href*="savedSearchId=${savedId}"]`).first();
-    if (await linkById.isVisible({ timeout: 4000 }).catch(() => false)) {
-      await linkById.click();
-      await page.waitForSelector('ol li:has(a[href*="/sales/lead/"])', { timeout: 12000 }).catch(() => {});
-      await delay(800);
-      return { ok: true };
-    }
-    const linkByNombre = page.locator(`a:has-text("${busqueda.nombre}")`).first();
-    if (await linkByNombre.isVisible({ timeout: 4000 }).catch(() => false)) {
-      await linkByNombre.click();
-      await page.waitForSelector('ol li:has(a[href*="/sales/lead/"])', { timeout: 12000 }).catch(() => {});
-      await delay(800);
-      return { ok: true };
-    }
-    return { ok: false, error: `Búsqueda "${busqueda.nombre}" no encontrada` };
-  } catch (err) {
+    log(cuenta, `F1 ✗ Error: ${err.message}`);
     return { ok: false, error: err.message };
   }
 }
