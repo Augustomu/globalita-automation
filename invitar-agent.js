@@ -286,6 +286,13 @@ async function procesarPerfilesConScroll(page, cuenta, cuota, grupo, quotaState)
     return { enviados: 0, agotada: true };
   }
 
+  // Esperar a que los perfiles se rendericen dentro del contenedor (hasta 10s)
+  const perfilesOk = await page.waitForSelector(SELECTOR_PERFILES, { timeout: 10000 }).catch(() => null);
+  if (!perfilesOk) {
+    log(cuenta, `F2 ✗ Contenedor visible pero sin perfiles tras 10s`);
+    return { enviados: 0, agotada: true };
+  }
+
   // Centrar mouse para mouse.wheel — mismo fix de F2 anterior
   const bbox = await contenedor.boundingBox().catch(() => null);
   if (!bbox) await page.mouse.move(640, 430);
