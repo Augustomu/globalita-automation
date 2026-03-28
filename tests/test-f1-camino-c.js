@@ -4,44 +4,26 @@
 // CAMINO C (91%): goto sales/lists/people → click link con nombre →
 //   waitForSelector(SELECTOR_PERFILES)
 //
-// Cuenta: francisco | Sesión: "francisco agente invitaciones"
-// NO envía invitaciones — solo navega y detecta.
+// Cuenta: francisco | NO envía invitaciones.
 //
 // Uso:
 //   node tests/test-f1-camino-c.js
 // ================================================================
 
-const { chromium } = require('playwright');
-const path = require('path');
+const { launchBrowser, delay, log, cerrarBanners, SELECTOR_PERFILES } = require('./test-helpers');
 
-const SESSION_DIR = path.resolve(__dirname, '..', 'francisco agente invitaciones');
 const SEARCH_NAME = 'Gerente, RJ MG ES BH';
-const SELECTOR_PERFILES =
-  'ol li:has(a[href*="/sales/lead/"]), ol li:has(a[href*="/sales/people/"]), ' +
-  'ul li:has(a[href*="/sales/lead/"]), ul li:has(a[href*="/sales/people/"])';
-
-function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
-function log(msg)  { console.log(`[${new Date().toISOString().slice(11,23)}] ${msg}`); }
-
-async function cerrarBanners(page) {
-  await page.evaluate(() => {
-    const sels = ['[data-test-global-alert-dismiss]','[aria-label="Dismiss"]','[aria-label="Cerrar"]','[aria-label="Fechar"]','.artdeco-global-alert__dismiss','.global-alert-banner__dismiss'];
-    sels.forEach(s => document.querySelectorAll(s).forEach(b => { try { b.click(); } catch(_){} }));
-  }).catch(() => {});
-}
 
 (async () => {
   log('CAMINO C — F1 sales/lists/people — inicio');
-  log(`Sesión: ${SESSION_DIR}`);
   log(`Búsqueda: "${SEARCH_NAME}"`);
 
   let context;
   try {
-    context = await chromium.launchPersistentContext(SESSION_DIR, {
-      headless: false,
-      viewport: { width: 1280, height: 860 },
-    });
-    const page = await context.newPage();
+    const res = await launchBrowser('francisco');
+    context = res.context;
+    const page = res.page;
+    log(`Modo: ${res.mode}`);
     const t0 = Date.now();
 
     // 1. Navegar a la página de listas
@@ -54,7 +36,7 @@ async function cerrarBanners(page) {
     log(`Página cargada: ${page.url()}`);
     log(`Título: ${await page.title()}`);
 
-    // 2. Auditoría: loguear todos los links visibles que contengan texto relevante
+    // 2. Auditoría: loguear elementos relevantes
     const links = await page.evaluate(() => {
       return Array.from(document.querySelectorAll('a, button, span, td, th'))
         .filter(el => el.offsetParent !== null && el.textContent.trim())

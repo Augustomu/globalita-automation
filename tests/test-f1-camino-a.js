@@ -4,44 +4,26 @@
 // CAMINO A (96%): goto sales/search/people → click "Saved searches" →
 //   click "Gerente, RJ MG ES BH" → waitForSelector(SELECTOR_PERFILES)
 //
-// Cuenta: francisco | Sesión: "francisco agente invitaciones"
-// NO envía invitaciones — solo navega y detecta.
+// Cuenta: francisco | NO envía invitaciones.
 //
 // Uso:
 //   node tests/test-f1-camino-a.js
 // ================================================================
 
-const { chromium } = require('playwright');
-const path = require('path');
+const { launchBrowser, delay, log, cerrarBanners, SELECTOR_PERFILES } = require('./test-helpers');
 
-const SESSION_DIR = path.resolve(__dirname, '..', 'francisco agente invitaciones');
 const SEARCH_NAME = 'Gerente, RJ MG ES BH';
-const SELECTOR_PERFILES =
-  'ol li:has(a[href*="/sales/lead/"]), ol li:has(a[href*="/sales/people/"]), ' +
-  'ul li:has(a[href*="/sales/lead/"]), ul li:has(a[href*="/sales/people/"])';
-
-function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
-function log(msg)  { console.log(`[${new Date().toISOString().slice(11,23)}] ${msg}`); }
-
-async function cerrarBanners(page) {
-  await page.evaluate(() => {
-    const sels = ['[data-test-global-alert-dismiss]','[aria-label="Dismiss"]','[aria-label="Cerrar"]','[aria-label="Fechar"]','.artdeco-global-alert__dismiss','.global-alert-banner__dismiss'];
-    sels.forEach(s => document.querySelectorAll(s).forEach(b => { try { b.click(); } catch(_){} }));
-  }).catch(() => {});
-}
 
 (async () => {
   log('CAMINO A — F1 Saved Searches panel — inicio');
-  log(`Sesión: ${SESSION_DIR}`);
   log(`Búsqueda: "${SEARCH_NAME}"`);
 
   let context;
   try {
-    context = await chromium.launchPersistentContext(SESSION_DIR, {
-      headless: false,
-      viewport: { width: 1280, height: 860 },
-    });
-    const page = await context.newPage();
+    const res = await launchBrowser('francisco');
+    context = res.context;
+    const page = res.page;
+    log(`Modo: ${res.mode}`);
     const t0 = Date.now();
 
     // 1. Navegar a la página de búsqueda de personas

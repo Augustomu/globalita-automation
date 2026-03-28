@@ -5,44 +5,26 @@
 //   buscar "Gerente, RJ MG ES BH" en dropdowns → click →
 //   waitForSelector(SELECTOR_PERFILES)
 //
-// Cuenta: francisco | Sesión: "francisco agente invitaciones"
-// NO envía invitaciones — solo navega y detecta.
+// Cuenta: francisco | NO envía invitaciones.
 //
 // Uso:
 //   node tests/test-f1-camino-b.js
 // ================================================================
 
-const { chromium } = require('playwright');
-const path = require('path');
+const { launchBrowser, delay, log, cerrarBanners, SELECTOR_PERFILES } = require('./test-helpers');
 
-const SESSION_DIR = path.resolve(__dirname, '..', 'francisco agente invitaciones');
 const SEARCH_NAME = 'Gerente, RJ MG ES BH';
-const SELECTOR_PERFILES =
-  'ol li:has(a[href*="/sales/lead/"]), ol li:has(a[href*="/sales/people/"]), ' +
-  'ul li:has(a[href*="/sales/lead/"]), ul li:has(a[href*="/sales/people/"])';
-
-function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
-function log(msg)  { console.log(`[${new Date().toISOString().slice(11,23)}] ${msg}`); }
-
-async function cerrarBanners(page) {
-  await page.evaluate(() => {
-    const sels = ['[data-test-global-alert-dismiss]','[aria-label="Dismiss"]','[aria-label="Cerrar"]','[aria-label="Fechar"]','.artdeco-global-alert__dismiss','.global-alert-banner__dismiss'];
-    sels.forEach(s => document.querySelectorAll(s).forEach(b => { try { b.click(); } catch(_){} }));
-  }).catch(() => {});
-}
 
 (async () => {
   log('CAMINO B — F1 Dropdown/nav header — inicio');
-  log(`Sesión: ${SESSION_DIR}`);
   log(`Búsqueda: "${SEARCH_NAME}"`);
 
   let context;
   try {
-    context = await chromium.launchPersistentContext(SESSION_DIR, {
-      headless: false,
-      viewport: { width: 1280, height: 860 },
-    });
-    const page = await context.newPage();
+    const res = await launchBrowser('francisco');
+    context = res.context;
+    const page = res.page;
+    log(`Modo: ${res.mode}`);
     const t0 = Date.now();
 
     // 1. Navegar a la página de búsqueda
@@ -59,7 +41,6 @@ async function cerrarBanners(page) {
     log('Paso 2: Auditando nav/header...');
     const navTexts = await page.evaluate(() => {
       const results = [];
-      // Buscar en nav, header, y elementos con role
       const selectors = ['nav a', 'nav button', 'nav span', 'header a', 'header button',
         '[role="navigation"] a', '[role="navigation"] button',
         '[class*="search"] a', '[class*="search"] button', '[class*="search"] span',
@@ -81,10 +62,8 @@ async function cerrarBanners(page) {
     log(`Nav/header: ${navTexts.length} elementos encontrados`);
     navTexts.forEach((t, i) => log(`  [${i}] <${t.tag}> "${t.text}" ${t.href ? '→ ' + t.href : ''}`));
 
-    // 3. Buscar "Gerente" o "saved" o "search" clickeable
+    // 3. Buscar botones relevantes (search, saved, recent)
     log('Paso 3: Buscando elementos con "Gerente", "saved", "search"...');
-
-    // Intentar clickear dropdowns que podrían contener búsquedas
     const dropdownBtns = await page.evaluate(() => {
       return Array.from(document.querySelectorAll('button, [role="button"], [class*="dropdown"]'))
         .filter(el => el.offsetParent !== null)
@@ -102,7 +81,7 @@ async function cerrarBanners(page) {
     log(`Botones relevantes: ${dropdownBtns.length}`);
     dropdownBtns.forEach((b, i) => log(`  [${i}] "${b.text}" aria="${b.ariaLabel}"`));
 
-    // Intentar cada botón relevante para abrir dropdown y buscar el nombre
+    // Intentar cada botón relevante
     let found = false;
     for (let i = 0; i < dropdownBtns.length && !found; i++) {
       const btnText = dropdownBtns[i].text || dropdownBtns[i].ariaLabel;
@@ -112,7 +91,6 @@ async function cerrarBanners(page) {
         await btn.click();
         await delay(1000);
 
-        // Buscar el nombre de la búsqueda en lo que se abrió
         const link = await page.waitForSelector(
           `a:has-text("${SEARCH_NAME}"), span:has-text("${SEARCH_NAME}"), li:has-text("${SEARCH_NAME}")`,
           { timeout: 3000 }
@@ -124,14 +102,13 @@ async function cerrarBanners(page) {
           found = true;
         } else {
           log(`No encontrado en dropdown de "${btnText}"`);
-          // Cerrar dropdown haciendo click afuera
           await page.mouse.click(10, 10);
           await delay(500);
         }
       }
     }
 
-    // Si no encontramos en dropdowns, buscar directamente en la página
+    // Buscar directamente en la página
     if (!found) {
       log('Buscando directamente en la página...');
       const directLink = await page.waitForSelector(
