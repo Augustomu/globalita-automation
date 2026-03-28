@@ -283,3 +283,15 @@ para asegurar que la máquina local está sincronizada con el repo.
 
 **Nunca asumir que un archivo existe en la máquina local** solo porque está en el repo.
 Si el usuario reporta "Cannot find module", primero correr `git pull` antes de cualquier otra acción.
+
+---
+
+## Regla — Modo agéntico en debugging
+
+Cuando se te pide testear caminos o resolver un bug:
+- Nunca pares hasta encontrar un camino que funcione (✅)
+- Si un camino falla, analizá el log, formulá la hipótesis de por qué falló,
+  y creá el siguiente camino automáticamente sin pedir permiso
+- Podés crear todos los caminos adicionales que necesites más allá de los 3 iniciales
+- Solo parás cuando: (a) un camino da ✅, o (b) agotaste todas las hipótesis posibles
+- Cuando pares, reportás: qué intentaste, por qué falló cada uno, y cuál ganó (o qué quedó sin resolver)
