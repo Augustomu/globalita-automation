@@ -43,18 +43,18 @@ async function reportState(cuenta, patch) {
 
 const SEARCHES = {
   alejandro: [
-    { nombre: 'Angel investor, Estados Unidos', grupo: 'US', url: 'https://www.linkedin.com/sales/search/people?savedSearchId=1953289169' },
-    { nombre: 'Angel investor, Mexico',         grupo: 'MX', url: 'https://www.linkedin.com/sales/search/people?savedSearchId=1966570778' },
-    { nombre: 'Seed investor, Mexico',          grupo: 'MX', url: 'https://www.linkedin.com/sales/search/people?savedSearchId=1966570738' },
-    { nombre: 'Family Office, Mexico',          grupo: 'MX', url: 'https://www.linkedin.com/sales/search/people?savedSearchId=1947499081' },
+    { nombre: 'Angel investor, Estados Unidos', grupo: 'US' },
+    { nombre: 'Angel investor, Mexico',         grupo: 'MX' },
+    { nombre: 'Seed investor, Mexico',          grupo: 'MX' },
+    { nombre: 'Family Office, Mexico',          grupo: 'MX' },
   ],
   david: [
-    { nombre: 'Gerente, SP',   grupo: 'gerente',   url: 'https://www.linkedin.com/sales/search/people?savedSearchId=1964293001' },
-    { nombre: 'Consultor, SP', grupo: 'consultor', url: 'https://www.linkedin.com/sales/search/people?savedSearchId=1960930881' },
+    { nombre: 'Gerente, SP',   grupo: 'gerente' },
+    { nombre: 'Consultor, SP', grupo: 'consultor' },
   ],
   francisco: [
-    { nombre: 'Gerente, RJ MG ES BH',   grupo: 'gerente',   url: 'https://www.linkedin.com/sales/search/people?savedSearchId=1964400233' },
-    { nombre: 'Consultor, RJ MG ES BH', grupo: 'consultor', url: 'https://www.linkedin.com/sales/search/people?savedSearchId=1963291193' },
+    { nombre: 'Gerente, RJ MG ES BH',   grupo: 'gerente' },
+    { nombre: 'Consultor, RJ MG ES BH', grupo: 'consultor' },
   ],
 };
 
@@ -229,9 +229,10 @@ function logPendingEmail(cuenta, nombre, profileUrl, grupo = null) {
 // ═══════════════════════════════════════════════════════════════
 // F1 — abrirBusquedaGuardada
 // ═══════════════════════════════════════════════════════════════
-// Navega a la página de búsqueda de personas, abre el panel de
-// búsquedas guardadas y hace click en el nombre exacto de la lista.
-// Ya no depende de savedSearchId (LinkedIn los cambia).
+// Navega a sales/search/people, abre el panel de búsquedas guardadas,
+// y hace click en el link "Ver" usando aria-label con el nombre exacto.
+// Confirmado en producción: aria-label="Ver la búsqueda guardada de
+// posibles clientes: «NOMBRE»"
 
 async function abrirBusquedaGuardada(page, busqueda, cuenta) {
   log(cuenta, `F1 Abriendo: "${busqueda.nombre}"`);
@@ -244,25 +245,30 @@ async function abrirBusquedaGuardada(page, busqueda, cuenta) {
     await cerrarBanners(page);
 
     // 2. Abrir el panel de búsquedas guardadas
-    const savedBtn = page.locator('button:has-text("Saved searches"), button:has-text("Búsquedas guardadas")').first();
-    if (!await savedBtn.isVisible({ timeout: 8000 }).catch(() => false)) {
-      log(cuenta, `F1 ✗ Botón de búsquedas guardadas no visible`);
+    const savedBtn = await page.waitForSelector(
+      'button:has-text("Saved searches"), button:has-text("Búsquedas guardadas"), button:has-text("Pesquisas salvas")',
+      { timeout: 10000 }
+    ).catch(() => null);
+    if (!savedBtn) {
+      log(cuenta, `F1 ✗ Botón de búsquedas guardadas no encontrado`);
       return { ok: false, error: 'Botón de búsquedas guardadas no encontrado' };
     }
     await savedBtn.click();
-    await delay(1500);
+    await delay(3000); // el panel necesita tiempo para renderizar
 
-    // 3. Buscar el link con el nombre exacto de la búsqueda guardada
-    const nombreExacto = busqueda.nombre;
-    const linkBusqueda = page.locator(`a`).filter({ hasText: nombreExacto }).first();
-    if (!await linkBusqueda.isVisible({ timeout: 8000 }).catch(() => false)) {
-      log(cuenta, `F1 ✗ Búsqueda "${nombreExacto}" no encontrada en el panel`);
-      return { ok: false, error: `Búsqueda "${nombreExacto}" no encontrada en el panel` };
+    // 3. Click en el link "Ver" usando aria-label con el nombre de la búsqueda
+    const verLink = await page.waitForSelector(
+      `a[aria-label*="${busqueda.nombre}"]`,
+      { timeout: 8000 }
+    ).catch(() => null);
+    if (!verLink) {
+      log(cuenta, `F1 ✗ Búsqueda "${busqueda.nombre}" no encontrada en el panel`);
+      return { ok: false, error: `Búsqueda "${busqueda.nombre}" no encontrada en el panel` };
     }
-    await linkBusqueda.click();
+    await verLink.click();
 
     // 4. Esperar a que carguen los resultados
-    await page.waitForSelector(SELECTOR_PERFILES, { timeout: 12000 }).catch(() => {});
+    await page.waitForSelector(SELECTOR_PERFILES, { timeout: 15000 }).catch(() => {});
     await delay(800);
     await cerrarBanners(page);
 
@@ -1400,11 +1406,6 @@ async function runAccount(cuenta, quotaState) {
 }
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
-
-function extraerSavedSearchId(url) {
-  const match = url.match(/savedSearchId=(\d+)/);
-  return match ? match[1] : '';
-}
 
 function normalizarUrl(href) {
   if (!href) return '';
