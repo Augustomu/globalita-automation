@@ -4,10 +4,29 @@ const path = require("path");
 const { spawn } = require("child_process");
 
 let agentProcess = null;
-const PORT        = 3000;
+const PORT        = process.env.DASH_PORT || 3000;
 const STATUS_DIR  = path.join(__dirname, "status");
 const HISTORY_FILE = path.join(__dirname, "history.json");
 if (!fs.existsSync(STATUS_DIR)) fs.mkdirSync(STATUS_DIR);
+
+// ── Autenticación básica ──
+const AUTH_USER = process.env.DASH_USER || "augusto";
+const AUTH_PASS = process.env.DASH_PASS || "globalita2026";
+
+function checkAuth(req, res) {
+  const header = req.headers.authorization || "";
+  if (!header.startsWith("Basic ")) {
+    res.writeHead(401, { "WWW-Authenticate": 'Basic realm="Dashboard Globalita"' });
+    res.end("Acceso denegado");
+    return false;
+  }
+  const decoded = Buffer.from(header.slice(6), "base64").toString();
+  const [user, pass] = decoded.split(":");
+  if (user === AUTH_USER && pass === AUTH_PASS) return true;
+  res.writeHead(401, { "WWW-Authenticate": 'Basic realm="Dashboard Globalita"' });
+  res.end("Credenciales incorrectas");
+  return false;
+}
 
 function readHistory() {
   try { return JSON.parse(fs.readFileSync(HISTORY_FILE, "utf8")); }
@@ -59,6 +78,9 @@ function writeStatus(id, data) {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, "http://localhost:" + PORT);
+
+  // Auth requerida para todas las rutas
+  if (!checkAuth(req, res)) return;
 
   if (req.method === "GET" && url.pathname === "/") {
     const html = fs.readFileSync(path.join(__dirname, "dashboard.html"), "utf8");
